@@ -1,0 +1,1 @@
+This directory contains private application code not intended for import by other projects. It houses core logic and components specific to the `dush` shell.

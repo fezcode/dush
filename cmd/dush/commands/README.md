@@ -1,0 +1,1 @@
+This directory defines the command-line interface (CLI) commands and subcommands for the `dush` application, typically using a library like Cobra to structure CLI arguments and flags.

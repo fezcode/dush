@@ -1,0 +1,1 @@
+This directory handles application configuration, including loading, parsing, and validating settings for the `dush` shell.

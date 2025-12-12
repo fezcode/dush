@@ -1,0 +1,1 @@
+This directory contains test files and suites for the `dush` project, ensuring code quality and functionality.

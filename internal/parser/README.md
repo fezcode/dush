@@ -1,0 +1,1 @@
+This directory handles the logic for parsing user input into abstract syntax trees or structured commands for the `dush` shell.

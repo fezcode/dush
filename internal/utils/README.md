@@ -1,0 +1,1 @@
+This directory contains general-purpose utility functions specific to the `dush` application.

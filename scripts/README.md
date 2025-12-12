@@ -1,0 +1,1 @@
+This directory contains automation scripts for tasks such as building, testing, or deployment of the `dush` project.

@@ -1,0 +1,1 @@
+This directory contains `main` packages for executables. Each executable typically has its own subdirectory, defining the entry point and CLI commands for the application.

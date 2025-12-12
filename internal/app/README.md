@@ -1,0 +1,1 @@
+This directory contains the core business logic of the `dush` application, often separated into services or components related to shell operations and main application flow.

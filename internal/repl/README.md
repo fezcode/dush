@@ -1,0 +1,1 @@
+This directory contains the Read-Eval-Print Loop (REPL) logic for interactive sessions of the `dush` shell.

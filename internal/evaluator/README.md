@@ -1,0 +1,1 @@
+This directory contains the logic for interpreting and executing parsed commands within the `dush` shell.

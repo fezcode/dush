@@ -1,0 +1,1 @@
+This directory contains the `main` package for the `dush` executable, serving as the application's entry point.
