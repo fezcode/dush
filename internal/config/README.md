@@ -1,1 +1,2 @@
 This directory handles application configuration, including loading, parsing, and validating settings for the `dush` shell.
+The default `config.piml` file, used for embedding, is now located in the `cmd/dush/` directory.

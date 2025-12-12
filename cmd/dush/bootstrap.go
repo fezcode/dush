@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed" // New import for go:embed
 	"fmt"
 	"os"
 	"os/user"
@@ -10,15 +11,16 @@ import (
 	"dush/internal/config"
 )
 
-const defaultPIMLConfig = `(user_name) Guest`
+//go:embed config.piml
+var embeddedDefaultPIMLConfig string
 
 // Bootstrap initializes the application, including loading the configuration.
 func Bootstrap() {
 	var configPath string
 
 	if buildinfo.IsTestBuild() { // Use buildinfo.IsTestBuild()
-		DebugPrint("Running in test mode. Using internal/config/config.piml")
-		configPath = "internal/config/config.piml"
+		DebugPrint("Running in test mode. Using cmd/dush/config.piml")
+		configPath = "cmd/dush/config.piml"
 	} else {
 		// Try to find ~/.dush/config.piml
 		usr, err := user.Current()
@@ -36,18 +38,12 @@ func Bootstrap() {
 
 				// Create ~/.dush directory if it doesn't exist
 				if err := os.MkdirAll(dushConfigDir, 0755); err != nil {
-					_, err := fmt.Fprintf(os.Stderr, "Error creating .dush config directory: %v\n", err)
-					if err != nil {
-						panic(err)
-					}
+					DebugPrint("Error creating .dush config directory: %v", err) // Use DebugPrint, don't panic
 					// Proceeding with default config path, might panic later if dir is essential
 				} else {
 					// Write default config
-					if err := os.WriteFile(configPath, []byte(defaultPIMLConfig), 0644); err != nil {
-						_, err := fmt.Fprintf(os.Stderr, "Error writing default config file to %s: %v\n", configPath, err)
-						if err != nil {
-							panic(err)
-						}
+					if err := os.WriteFile(configPath, []byte(embeddedDefaultPIMLConfig), 0644); err != nil {
+						DebugPrint("Error writing default config file to %s: %v", configPath, err) // Use DebugPrint, don't panic
 						// Proceeding, but config load will likely fail
 					} else {
 						DebugPrint("Default config file created at %s", configPath)
