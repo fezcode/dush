@@ -4,34 +4,38 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
+	"os"            // os is needed for os.Getwd()
+	"path/filepath" // Keep for filepath.Base
 	"strings"
 
-	"dush/internal/config" // New import
+	"dush/internal/app"
+	"dush/internal/builtins"
+	"dush/internal/config"
 )
 
 // Start starts the Read-Eval-Print Loop.
-// It takes an io.Reader for input and an io.Writer for output.
-func Start(in io.Reader, out io.Writer) {
+// It takes an io.Reader for input, an io.Writer for output, and an io.Writer for error output.
+func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	scanner := bufio.NewScanner(in)
 
+	// Get the singleton App instance
+	appInstance := app.GetApp()
+
+	// Initialize currentCWD with the actual OS CWD at startup
+	initialCWD, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(errOut, "Error getting initial working directory: %v. Defaulting to '/'.\n", err)
+		initialCWD = "/" // Fallback if getting CWD fails
+	}
+	appInstance.SetCurrentDir(initialCWD) // Use the setter to initialize
+
 	// Get the configuration once at the start of REPL
-	// The config is already bootstrapped in main, so GetConfig will return the existing instance.
 	cfg := config.GetConfig()
 
 	for {
-		// Get current working directory
-		cwd, err := os.Getwd()
-		if err != nil {
-			// If we can't get CWD, fallback to a generic prompt
-			fmt.Fprintf(out, "%s %s%s", cfg.PromptPrefix, cfg.UserName, cfg.PromptSuffix)
-		} else {
-			// Construct the dynamic prompt
-			// Example: $ user@base_dir >>
-			promptLine := fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, filepath.Base(cwd), cfg.PromptSuffix)
-			fmt.Fprintf(out, promptLine)
-		}
+		// Construct the dynamic prompt using App's currentCWD
+		promptLine := fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, filepath.Base(appInstance.GetCurrentDir()), cfg.PromptSuffix)
+		fmt.Fprintf(out, promptLine)
 
 		scanned := scanner.Scan()
 		if !scanned {
@@ -46,7 +50,12 @@ func Start(in io.Reader, out io.Writer) {
 			return
 		}
 
-		// For now, just echo the input
+		// Check and execute built-in commands
+		if builtins.RunBuiltin(trimmedLine, out, errOut) {
+			continue // If a builtin was executed, skip further processing
+		}
+
+		// For now, just echo the input if not a builtin command
 		fmt.Fprintf(out, "Echo: %s\n", line)
 	}
 }

@@ -13,5 +13,5 @@ func main() {
 
 	fmt.Println("Welcome to dush!")
 	fmt.Println("Type 'exit' or 'quit' to exit.")
-	repl.Start(os.Stdin, os.Stdout)
+	repl.Start(os.Stdin, os.Stdout, os.Stderr)
 }

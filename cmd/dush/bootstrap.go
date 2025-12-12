@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"dush/cmd/dush/buildinfo" // Import the new buildinfo package
+	"dush/internal/app"       // New import
 	"dush/internal/config"
 )
 
@@ -16,6 +17,9 @@ var embeddedDefaultPIMLConfig string
 
 // Bootstrap initializes the application, including loading the configuration.
 func Bootstrap() {
+	// Initialize the App singleton early
+	_ = app.GetApp()
+
 	var configPath string
 
 	if buildinfo.IsTestBuild() { // Use buildinfo.IsTestBuild()
