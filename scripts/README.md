@@ -52,3 +52,35 @@ To run the build script, use the `go run` command followed by the script path an
     *   ... and so on for all defined targets.
 
 The compiled executables will be placed in the `build/` directory.
+
+## `fmt.go` Script
+
+The `fmt.go` script automates the process of formatting Go source code using `go fmt`. It ensures consistent code style across the project.
+
+### Usage
+
+To run the formatter, use:
+
+`go run scripts/fmt.go`
+
+If `go fmt` makes any changes, the script will print the list of modified files and exit with a non-zero status, which is useful for CI/CD pipelines to enforce formatting. If no changes are needed, it will exit successfully.
+
+## `lint.go` Script
+
+The `lint.go` script runs `golangci-lint` to analyze the Go source code for potential issues, bugs, and stylistic errors.
+
+### Usage
+
+To run the linter, use:
+
+`go run scripts/lint.go`
+
+The script will check if `golangci-lint` is installed and available in your system's PATH. If not, it will provide instructions for installation. If `golangci-lint` finds any issues, it will report them and exit with a non-zero status. If no issues are found, it will exit successfully.
+
+### Installing `golangci-lint`
+
+If `golangci-lint` is not installed on your system, you can install it by following the instructions on its official website: [https://golangci-lint.run/usage/install/#local-installation](https://golangci-lint.run/usage/install/#local-installation)
+
+A common way to install it is:
+
+`go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`

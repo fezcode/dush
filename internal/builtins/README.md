@@ -1,1 +1,1 @@
-This directory implements shell built-in commands (e.g., `cd`, `exit`, `pwd`) that are executed directly by the `dush` shell without spawning external processes.
+This directory implements shell built-in commands (e.g., `cd`, `exit`, `pwd`, `help`, `version`) that are executed directly by the `dush` shell without spawning external processes.

@@ -7,8 +7,8 @@ import (
 	"os/user"
 	"path/filepath"
 
-	"dush/cmd/dush/buildinfo" // Import the new buildinfo package
-	"dush/internal/app"       // New import
+	"dush/cmd/dush/buildinfo"
+	"dush/internal/app"
 	"dush/internal/config"
 )
 

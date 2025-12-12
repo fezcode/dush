@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // Target represents an OS/Arch combination
@@ -46,10 +47,25 @@ func performBuild(targetOS, targetArch, buildType string) error {
 
 	fmt.Printf("Building dush executable for %s/%s (Build Type: %s)...\n", targetOS, targetArch, strings.ToUpper(buildType))
 
+	// Get current git commit hash
+	commitCmd := exec.Command("git", "rev-parse", "HEAD")
+	commitOutput, err := commitCmd.Output()
+	if err != nil {
+		fmt.Printf("Warning: Could not get git commit hash: %v. Using 'unknown'.\n", err)
+		commitOutput = []byte("unknown")
+	}
+	commit := strings.TrimSpace(string(commitOutput))
+
+	// Get current build date
+	buildDate := time.Now().Format(time.RFC3339)
+
+	// Set version (can be dynamic, but for now, hardcode)
+	version := "0.1.0"
+
 	buildArgs := []string{"build"}
-	ldflags := ""
+	ldflags := fmt.Sprintf("-X 'dush/cmd/dush/buildinfo.Version=%s' -X 'dush/cmd/dush/buildinfo.Commit=%s' -X 'dush/cmd/dush/buildinfo.BuildDate=%s'", version, commit, buildDate)
 	if buildType == "test" {
-		ldflags = "-X 'dush/cmd/dush/buildinfo.isTestBuild=true'"
+		ldflags += " -X 'dush/cmd/dush/buildinfo.isTestBuild=true'"
 	}
 
 	if ldflags != "" {
@@ -61,14 +77,14 @@ func performBuild(targetOS, targetArch, buildType string) error {
 	cmd := exec.Command("go", buildArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Dir = "." // Changed from ".."
+	cmd.Dir = "."
 
 	// Set GOOS and GOARCH for cross-compilation in the command's environment
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GOOS=%s", targetOS))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GOARCH=%s", targetArch))
 
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("error building dush for %s/%s (Build Type: %s): %v", targetOS, targetArch, strings.ToUpper(buildType), err)
 	}

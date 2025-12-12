@@ -5,6 +5,15 @@ import (
 	"io"
 )
 
+// ListBuiltins returns a slice of strings containing the names of all registered built-in commands.
+func ListBuiltins() []string {
+	names := make([]string, 0, len(registeredCommands))
+	for name := range registeredCommands {
+		names = append(names, name)
+	}
+	return names
+}
+
 // Command is the interface that all built-in commands must implement.
 type Command interface {
 	Execute(args []string, out io.Writer, errOut io.Writer) error
