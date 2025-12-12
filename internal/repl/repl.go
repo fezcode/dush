@@ -4,19 +4,24 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"os" // os is needed for os.Getwd()
+	"os"
 	"strings"
 
 	"dush/internal/app"
 	"dush/internal/builtins"
 	"dush/internal/config"
-	"dush/internal/utils" // New import
+	"dush/internal/utils"
 )
 
 // Start starts the Read-Eval-Print Loop.
 // It takes an io.Reader for input, an io.Writer for output, and an io.Writer for error output.
 func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	scanner := bufio.NewScanner(in)
+
+	// Load history at the start of the REPL
+	utils.LoadHistory()
+	// Ensure history is saved when the REPL exits
+	defer utils.SaveHistory()
 
 	// Get the singleton App instance
 	appInstance := app.GetApp()
@@ -34,7 +39,7 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 
 	for {
 		currentCWD := appInstance.GetCurrentDir()
-		displayDirName := utils.GetDisplayDirName(currentCWD) // Use the utility function
+		displayDirName := utils.GetDisplayDirName(currentCWD)
 
 		// Construct the dynamic prompt using App's currentCWD
 		promptLine := fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, displayDirName, cfg.PromptSuffix)
@@ -42,7 +47,8 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 
 		scanned := scanner.Scan()
 		if !scanned {
-			return // EOF or error
+			fmt.Fprintf(out, "Exiting dush REPL.\n") // Inform user on EOF
+			return                                   // EOF or error
 		}
 
 		line := scanner.Text()
@@ -50,6 +56,9 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		if trimmedLine == "" {
 			continue // Skip empty lines
 		}
+
+		// Add command to history before processing it
+		utils.AddCommand(trimmedLine)
 
 		parts := strings.Fields(trimmedLine)
 		cmdName := parts[0]
