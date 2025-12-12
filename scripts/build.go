@@ -63,7 +63,7 @@ func performBuild(targetOS, targetArch, buildType string) error {
 	version := "0.1.0"
 
 	buildArgs := []string{"build"}
-	ldflags := fmt.Sprintf("-X 'dush/cmd/dush/buildinfo.Version=%s' -X 'dush/cmd/dush/buildinfo.Commit=%s' -X 'dush/cmd/dush/buildinfo.BuildDate=%s'", version, commit, buildDate)
+	ldflags := fmt.Sprintf("-s -w -X 'dush/cmd/dush/buildinfo.Version=%s' -X 'dush/cmd/dush/buildinfo.Commit=%s' -X 'dush/cmd/dush/buildinfo.BuildDate=%s'", version, commit, buildDate)
 	if buildType == "test" {
 		ldflags += " -X 'dush/cmd/dush/buildinfo.isTestBuild=true'"
 	}
