@@ -1,36 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
+
+	"dush/internal/repl"
 )
 
 func main() {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Print("dush> ")
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
+	// Bootstrap the application
+	Bootstrap() // Call the bootstrap function without arguments
 
-		if input == "exit" || input == "quit" {
-			break
-		}
-
-		// Simple command execution
-		args := strings.Fields(input)
-		if len(args) == 0 {
-			continue
-		}
-
-		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err := cmd.Run()
-		if err != nil {
-			fmt.Println("Error:", err)
-		}
-	}
+	fmt.Println("Welcome to dush!")
+	fmt.Println("Type 'exit' or 'quit' to exit.")
+	repl.Start(os.Stdin, os.Stdout)
 }
