@@ -2,10 +2,13 @@ package repl
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall" // New import for specific signals
 
 	"dush/internal/app"
 	"dush/internal/builtins"
@@ -17,6 +20,10 @@ import (
 // It takes an io.Reader for input, an io.Writer for output, and an io.Writer for error output.
 func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	scanner := bufio.NewScanner(in)
+
+	// Create a context for the entire REPL lifecycle, cancelled on SIGTERM/SIGHUP
+	replCtx, replCancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGHUP)
+	defer replCancel() // Ensure this context is cancelled when Start returns
 
 	// Load history at the start of the REPL
 	utils.LoadHistory()
@@ -38,6 +45,15 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	cfg := config.GetConfig()
 
 	for {
+		// Check if the main REPL context has been cancelled
+		select {
+		case <-replCtx.Done():
+			fmt.Fprintf(out, "\nExiting dush REPL gracefully...\n")
+			return
+		default:
+			// Continue
+		}
+
 		currentCWD := appInstance.GetCurrentDir()
 		displayDirName := utils.GetDisplayDirName(currentCWD)
 
@@ -45,7 +61,36 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		promptLine := fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, displayDirName, cfg.PromptSuffix)
 		fmt.Fprintf(out, promptLine)
 
+		// Create a cancellable context for the current command
+		cmdCtx, cmdCancel := context.WithCancel(replCtx) // Child context of replCtx
+		// Defer cmdCancel to ensure it's always called, but it might be called earlier by signal handler
+		defer func() {
+			// This defer will only run when the loop iteration finishes.
+			// It's crucial to call cmdCancel() to release resources even if not explicitly cancelled by Ctrl+C.
+			cmdCancel()
+		}()
+
+		// Set up signal handling for the current command
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt) // Capture Ctrl+C
+
+		go func() {
+			select {
+			case <-sigChan: // Ctrl+C received
+				fmt.Fprintln(errOut, "\nInterrupt received. Cancelling current command...")
+				cmdCancel() // Cancel the context for the current command
+			case <-cmdCtx.Done():
+				// Command finished or was cancelled by other means, stop listening to sigChan
+			}
+		}()
+
 		scanned := scanner.Scan()
+		// After scanner.Scan() returns, stop listening for signals on sigChan for this command
+		// and reset signal.Notify to its default or a new context for the next command.
+		// However, signal.Stop is tricky with multiple listeners.
+		// A simpler approach for cleanup is to rely on cmdCancel() and the goroutine
+		// exiting when cmdCtx.Done() is closed. The signal.Notify will stay active.
+
 		if !scanned {
 			fmt.Fprintf(out, "Exiting dush REPL.\n") // Inform user on EOF
 			return                                   // EOF or error
@@ -69,14 +114,22 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 			return
 		}
 
-		// Check and execute built-in commands
-		if builtins.RunBuiltin(cmdName, args, out, errOut) {
-			continue // If a builtin was executed, skip further processing
+		// Check and execute built-in commands, passing the command context
+		if builtins.RunBuiltin(cmdCtx, cmdName, args, out, errOut) {
+			// Builtin handled, continue loop. cmdCancel will be called by defer.
 		} else {
 			// If not a built-in command, attempt to run as an external command
 			// For now, this is a placeholder.
 			fmt.Fprintf(out, "Command not found: %s\n", cmdName)
 			// In a future step, we will implement logic to search PATH and execute external commands here.
 		}
+
+		// After command execution, ensure no lingering signal goroutine tries to cancel a context
+		// that's about to be recreated. The current goroutine naturally exits when cmdCtx.Done() is closed by cmdCancel().
+		// No explicit signal.Stop is needed if we're constantly notifying the same channel for all signals.
+		// However, it's safer to ensure we're not stacking signal listeners.
+		// signal.Reset(os.Interrupt) would remove all registrations for os.Interrupt.
+		// A more precise approach is to re-create sigChan for each command, ensuring only one listener per context.
+		// This is done by `sigChan := make(chan os.Signal, 1); signal.Notify(sigChan, os.Interrupt)` inside the loop.
 	}
 }

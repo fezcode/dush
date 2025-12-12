@@ -1,6 +1,7 @@
 package builtins
 
 import (
+	"context" // New import
 	"fmt"
 	"io"
 	"sort"
@@ -10,7 +11,7 @@ import (
 type HelpCommand struct{}
 
 // Execute prints a list of all available built-in commands.
-func (c *HelpCommand) Execute(args []string, out io.Writer, errOut io.Writer) error {
+func (c *HelpCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
 	if len(args) > 0 {
 		return fmt.Errorf("help command does not accept arguments")
 	}

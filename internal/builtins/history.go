@@ -1,6 +1,7 @@
 package builtins
 
 import (
+	"context" // New import
 	"fmt"
 	"io"
 
@@ -9,7 +10,7 @@ import (
 
 type HistoryCommand struct{}
 
-func (c *HistoryCommand) Execute(args []string, out io.Writer, errOut io.Writer) error {
+func (c *HistoryCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
 	history := utils.GetHistory()
 	if len(history) == 0 {
 		fmt.Fprintln(out, "No command history available.")

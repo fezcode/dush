@@ -1,6 +1,7 @@
 package builtins
 
 import (
+	"context" // New import
 	"fmt"
 	"io"
 )
@@ -9,7 +10,7 @@ import (
 type ClearCommand struct{}
 
 // Execute clears the terminal screen using ANSI escape codes.
-func (c *ClearCommand) Execute(args []string, out io.Writer, errOut io.Writer) error {
+func (c *ClearCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
 	if len(args) > 0 {
 		return fmt.Errorf("clear: too many arguments")
 	}

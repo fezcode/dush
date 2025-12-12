@@ -1,19 +1,20 @@
 package builtins
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
-	"dush/internal/app" // New import
+	"dush/internal/app"
 )
 
 // CDCommand implements the Command interface for the 'cd' builtin.
 type CDCommand struct{}
 
 // Execute changes the shell's current working directory.
-func (c *CDCommand) Execute(args []string, out io.Writer, errOut io.Writer) error {
+func (c *CDCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
 	appInstance := app.GetApp() // Get the app singleton
 
 	if len(args) == 0 {

@@ -1,6 +1,7 @@
 package builtins
 
 import (
+	"context" // New import
 	"fmt"
 	"io"
 
@@ -11,7 +12,7 @@ import (
 type PWDCommand struct{}
 
 // Execute prints the current working directory to the output writer.
-func (c *PWDCommand) Execute(args []string, out io.Writer, errOut io.Writer) error {
+func (c *PWDCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
 	if len(args) > 0 {
 		return fmt.Errorf("pwd: too many arguments")
 	}

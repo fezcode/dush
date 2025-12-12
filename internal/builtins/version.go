@@ -1,6 +1,7 @@
 package builtins
 
 import (
+	"context" // New import
 	"fmt"
 	"io"
 
@@ -11,7 +12,7 @@ import (
 type VersionCommand struct{}
 
 // Execute prints the version information of the application.
-func (c *VersionCommand) Execute(args []string, out io.Writer, errOut io.Writer) error {
+func (c *VersionCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
 	if len(args) > 0 {
 		return fmt.Errorf("version command does not accept arguments")
 	}
