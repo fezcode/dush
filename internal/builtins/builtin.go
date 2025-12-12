@@ -3,7 +3,6 @@ package builtins
 import (
 	"fmt"
 	"io"
-	"strings"
 )
 
 // Command is the interface that all built-in commands must implement.
@@ -18,17 +17,11 @@ func RegisterBuiltin(name string, cmd Command) {
 	registeredCommands[name] = cmd
 }
 
-// RunBuiltin checks if the input is a registered built-in command and executes it.
+// RunBuiltin checks if the given command name is a registered built-in command and executes it.
 // It returns true if a builtin was executed, false otherwise.
-func RunBuiltin(input string, out io.Writer, errOut io.Writer) bool {
-	parts := strings.Fields(input)
-	if len(parts) == 0 {
-		return false
-	}
-
-	cmdName := parts[0]
+func RunBuiltin(cmdName string, args []string, out io.Writer, errOut io.Writer) bool {
 	if cmd, ok := registeredCommands[cmdName]; ok {
-		err := cmd.Execute(parts[1:], out, errOut)
+		err := cmd.Execute(args, out, errOut)
 		if err != nil {
 			fmt.Fprintf(errOut, "%s: %v\n", cmdName, err)
 		}

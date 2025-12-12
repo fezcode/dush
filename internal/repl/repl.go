@@ -44,18 +44,27 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 
 		line := scanner.Text()
 		trimmedLine := strings.TrimSpace(line)
+		if trimmedLine == "" {
+			continue // Skip empty lines
+		}
 
-		if trimmedLine == "exit" || trimmedLine == "quit" {
+		parts := strings.Fields(trimmedLine)
+		cmdName := parts[0]
+		args := parts[1:]
+
+		if cmdName == "exit" || cmdName == "quit" {
 			fmt.Fprintf(out, "Exiting dush REPL.\n")
 			return
 		}
 
 		// Check and execute built-in commands
-		if builtins.RunBuiltin(trimmedLine, out, errOut) {
+		if builtins.RunBuiltin(cmdName, args, out, errOut) {
 			continue // If a builtin was executed, skip further processing
+		} else {
+			// If not a built-in command, attempt to run as an external command
+			// For now, this is a placeholder.
+			fmt.Fprintf(out, "Command not found: %s\n", cmdName)
+			// In a future step, we will implement logic to search PATH and execute external commands here.
 		}
-
-		// For now, just echo the input if not a builtin command
-		fmt.Fprintf(out, "Echo: %s\n", line)
 	}
 }
