@@ -4,13 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"os"            // os is needed for os.Getwd()
-	"path/filepath" // Keep for filepath.Base
+	"os" // os is needed for os.Getwd()
 	"strings"
 
 	"dush/internal/app"
 	"dush/internal/builtins"
 	"dush/internal/config"
+	"dush/internal/utils" // New import
 )
 
 // Start starts the Read-Eval-Print Loop.
@@ -33,8 +33,11 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	cfg := config.GetConfig()
 
 	for {
+		currentCWD := appInstance.GetCurrentDir()
+		displayDirName := utils.GetDisplayDirName(currentCWD) // Use the utility function
+
 		// Construct the dynamic prompt using App's currentCWD
-		promptLine := fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, filepath.Base(appInstance.GetCurrentDir()), cfg.PromptSuffix)
+		promptLine := fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, displayDirName, cfg.PromptSuffix)
 		fmt.Fprintf(out, promptLine)
 
 		scanned := scanner.Scan()
