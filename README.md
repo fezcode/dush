@@ -6,13 +6,13 @@ This project aims to develop a custom terminal shell written in Go.
 The primary goal of Dush is to create a functional and extensible command-line interface (CLI) that provides a user-friendly experience for interacting with the operating system. It will serve as a learning platform for understanding shell mechanics, Go programming, and system interactions.
 
 ## Features
-- **Command Execution**: Execute external programs and commands.
-- **Built-in Commands**: Implement essential shell built-in commands (e.g., `cd`, `exit`, `pwd`).
-- **Input/Output Redirection**: Support basic I/O redirection (`<`, `>`, `>>`).
-- **Piping**: Allow chaining commands with pipes (`|`).
-- **Environment Variables**: Manage and access environment variables.
-- **Command History**: Basic command history for easy recall.
-- **Customizable Prompt**: A dynamic and informative shell prompt.
+- [x] **Command Execution**: Execute external programs and commands.
+- [x] **Built-in Commands**: Implement essential shell built-in commands (e.g., `cd`, `exit`, `pwd`).
+- [ ] **Input/Output Redirection**: Support basic I/O redirection (`<`, `>`, `>>`).
+- [ ] **Piping**: Allow chaining commands with pipes (`|`).
+- [ ] **Environment Variables**: Manage and access environment variables.
+- [x] **Command History**: Basic command history for easy recall.
+- [ ] **Customizable Prompt**: A dynamic and informative shell prompt.
 
 ## Getting Started
 
