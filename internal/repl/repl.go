@@ -109,6 +109,19 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		cmdName := parts[0]
 		args := parts[1:]
 
+		// --- Start Alias Expansion ---
+		cfg := config.GetConfig() // Get current config to access aliases
+		if expandedValue, ok := cfg.Aliases[cmdName]; ok {
+			// If the command name is an alias, expand it
+			expandedParts := strings.Fields(expandedValue)
+			if len(expandedParts) > 0 {
+				cmdName = expandedParts[0]
+				// Append original args to expanded alias args
+				args = append(expandedParts[1:], args...)
+			}
+		}
+		// --- End Alias Expansion ---
+
 		if cmdName == "exit" || cmdName == "quit" {
 			fmt.Fprintf(out, "Exiting dush REPL.\n")
 			return
