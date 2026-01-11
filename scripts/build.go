@@ -24,9 +24,9 @@ var targets = []Target{
 	{"darwin", "arm64"}, // For Apple Silicon
 }
 
-func performBuild(targetOS, targetArch, buildType string) error {
-	// Create output file name based on target OS, Arch, and Build Type
-	outputFileName := fmt.Sprintf("dush-%s-%s", targetOS, targetArch)
+func performBuild(targetOS, targetArch, buildType, appName string) error {
+	// Create output file name based on app name, target OS, Arch, and Build Type
+	outputFileName := fmt.Sprintf("%s-%s-%s", appName, targetOS, targetArch)
 	if buildType == "test" {
 		outputFileName += "-test"
 	}
@@ -45,7 +45,7 @@ func performBuild(targetOS, targetArch, buildType string) error {
 
 	outputFilePath := fmt.Sprintf("%s/%s", buildDir, outputFileName)
 
-	fmt.Printf("Building dush executable for %s/%s (Build Type: %s)...\n", targetOS, targetArch, strings.ToUpper(buildType))
+	fmt.Printf("Building %s executable for %s/%s (Build Type: %s)...\n", appName, targetOS, targetArch, strings.ToUpper(buildType))
 
 	// Get current git commit hash
 	commitCmd := exec.Command("git", "rev-parse", "HEAD")
@@ -59,20 +59,26 @@ func performBuild(targetOS, targetArch, buildType string) error {
 	// Get current build date
 	buildDate := time.Now().Format(time.RFC3339)
 
-	// Set version (can be dynamic, but for now, hardcode)
+	// Set version
 	version := "0.1.0"
 
 	buildArgs := []string{"build"}
-	ldflags := fmt.Sprintf("-s -w -X 'dush/cmd/dush/buildinfo.Version=%s' -X 'dush/cmd/dush/buildinfo.Commit=%s' -X 'dush/cmd/dush/buildinfo.BuildDate=%s'", version, commit, buildDate)
-	if buildType == "test" {
-		ldflags += " -X 'dush/cmd/dush/buildinfo.isTestBuild=true'"
+	// Use buildinfo paths only for dush, others might not have it
+	ldflags := ""
+	if appName == "dush" {
+		ldflags = fmt.Sprintf("-s -w -X 'dush/cmd/dush/buildinfo.Version=%s' -X 'dush/cmd/dush/buildinfo.Commit=%s' -X 'dush/cmd/dush/buildinfo.BuildDate=%s'", version, commit, buildDate)
+		if buildType == "test" {
+			ldflags += " -X 'dush/cmd/dush/buildinfo.isTestBuild=true'"
+		}
+	} else {
+		ldflags = "-s -w"
 	}
 
 	if ldflags != "" {
 		buildArgs = append(buildArgs, "-ldflags="+ldflags)
 	}
 
-	buildArgs = append(buildArgs, "-o", outputFilePath, "./cmd/dush")
+	buildArgs = append(buildArgs, "-o", outputFilePath, fmt.Sprintf("./cmd/%s", appName))
 
 	cmd := exec.Command("go", buildArgs...)
 	cmd.Stdout = os.Stdout
@@ -83,13 +89,14 @@ func performBuild(targetOS, targetArch, buildType string) error {
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GOOS=%s", targetOS))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GOARCH=%s", targetArch))
+	cmd.Env = append(cmd.Env, "CGO_ENABLED=0")
 
 	err = cmd.Run()
 	if err != nil {
-		return fmt.Errorf("error building dush for %s/%s (Build Type: %s): %v", targetOS, targetArch, strings.ToUpper(buildType), err)
+		return fmt.Errorf("error building %s for %s/%s (Build Type: %s): %v", appName, targetOS, targetArch, strings.ToUpper(buildType), err)
 	}
 
-	fmt.Printf("dush executable built successfully: %s\n", outputFilePath)
+	fmt.Printf("%s executable built successfully: %s\n", appName, outputFilePath)
 	return nil
 }
 
@@ -108,7 +115,6 @@ func main() {
 	}
 
 	// Override with command-line arguments if provided
-	// os.Args[0] is the program name itself
 	argIndex := 1
 	if len(os.Args) > argIndex {
 		targetOS = os.Args[argIndex]
@@ -122,30 +128,42 @@ func main() {
 		bt := strings.ToLower(os.Args[argIndex])
 		if bt == "test" || bt == "normal" || bt == "all" {
 			buildType = bt
-		} else {
-			fmt.Printf("Warning: Unknown build type '%s'. Using default 'normal'.\n", bt)
 		}
 		argIndex++
 	}
 
+	// Find all apps in cmd/
+	apps := []string{}
+	entries, _ := os.ReadDir("cmd")
+	for _, e := range entries {
+		if e.IsDir() && e.Name() != "commands" && e.Name() != "buildinfo" {
+			// Check if main.go exists
+			if _, err := os.Stat(fmt.Sprintf("cmd/%s/main.go", e.Name())); err == nil {
+				apps = append(apps, e.Name())
+			}
+		}
+	}
+
 	if targetOS == "all" {
-		// Building for all targets
-		fmt.Println("Building all targets...")
+		fmt.Println("Building all targets for all apps...")
 		for _, bt := range []string{"normal", "test"} {
 			for _, t := range targets {
-				if err := performBuild(t.OS, t.Arch, bt); err != nil {
-					fmt.Printf("Failed to build %s/%s %s: %v\n", t.OS, t.Arch, bt, err)
-					os.Exit(1)
+				for _, appName := range apps {
+					if err := performBuild(t.OS, t.Arch, bt, appName); err != nil {
+						fmt.Printf("Failed to build %s %s/%s %s: %v\n", appName, t.OS, t.Arch, bt, err)
+						os.Exit(1)
+					}
 				}
 			}
 		}
 	} else {
-		if err := performBuild(targetOS, targetArch, buildType); err != nil {
-			fmt.Println("Build failed.")
-			os.Exit(1)
+		for _, appName := range apps {
+			if err := performBuild(targetOS, targetArch, buildType, appName); err != nil {
+				fmt.Printf("Build failed for %s.\n", appName)
+				os.Exit(1)
+			}
 		}
 	}
 
 	fmt.Println("All requested builds completed.")
-	fmt.Println("To run an executable, navigate to the 'build' directory and execute it.")
 }

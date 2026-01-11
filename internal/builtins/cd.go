@@ -40,17 +40,12 @@ func (c *CDCommand) Execute(ctx context.Context, args []string, out io.Writer, e
 		absolutePath = filepath.Clean(filepath.Join(currentCWD, newPath))
 	}
 
-	// DIAGNOSTIC PRINT
-	fmt.Fprintf(errOut, "CD: newPath=%s, currentCWD=%s, absolutePath=%s\n", newPath, currentCWD, absolutePath)
-
 	// Check if the path exists and is a directory
 	fileInfo, err := os.Stat(absolutePath)
 	if err != nil {
-		fmt.Fprintf(errOut, "CD: os.Stat(%s) failed: %v\n", absolutePath, err) // DIAGNOSTIC PRINT
 		return fmt.Errorf("cd: %s: %w", newPath, err)
 	}
 	if !fileInfo.IsDir() {
-		fmt.Fprintf(errOut, "CD: %s is not a directory (Is Directory: %t)\n", absolutePath, fileInfo.IsDir()) // DIAGNOSTIC PRINT
 		return fmt.Errorf("cd: %s: Not a directory", newPath)
 	}
 
@@ -58,7 +53,6 @@ func (c *CDCommand) Execute(ctx context.Context, args []string, out io.Writer, e
 	if err := appInstance.SetCurrentDir(absolutePath); err != nil {
 		return fmt.Errorf("cd: %w", err)
 	}
-	fmt.Fprintf(errOut, "CD: Successfully set CWD to %s\n", absolutePath) // DIAGNOSTIC PRINT
 	return nil
 }
 func init() {

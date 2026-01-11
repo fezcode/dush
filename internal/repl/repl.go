@@ -6,21 +6,176 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"sort"
 	"strings"
-	"syscall" // New import for specific signals
+	"syscall"
 
 	"dush/internal/app"
 	"dush/internal/builtins"
 	"dush/internal/config"
+	"dush/internal/evaluator"
 	"dush/internal/utils"
+
+	"golang.org/x/term"
 )
+
+type lineEditor struct {
+	prompt string
+	line   []rune
+	pos    int
+}
+
+type terminalIO struct {
+	io.Reader
+	io.Writer
+}
+
+func (le *lineEditor) readLine(stdin io.Reader, stdout io.Writer) (string, error) {
+	t := term.NewTerminal(terminalIO{stdin, stdout}, le.prompt)
+
+	// Set autocomplete callback
+	t.AutoCompleteCallback = func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
+		if key == '\t' {
+			return le.autoComplete(line, pos)
+		}
+		return "", 0, false
+	}
+
+	return t.ReadLine()
+}
+
+func (le *lineEditor) autoComplete(line string, pos int) (string, int, bool) {
+	before := line[:pos]
+	after := line[pos:]
+
+	fields := strings.Fields(before)
+
+	// If the line is empty or we are completing the first word (command)
+	if len(fields) == 0 || (len(fields) == 1 && !strings.HasSuffix(before, " ")) {
+		prefix := ""
+		if len(fields) > 0 {
+			prefix = fields[0]
+		}
+
+		matches := []string{}
+		// Builtins
+		for _, name := range builtins.ListBuiltins() {
+			if strings.HasPrefix(name, prefix) {
+				matches = append(matches, name)
+			}
+		}
+		// Aliases
+		cfg := config.GetConfig()
+		for name := range cfg.Aliases {
+			if strings.HasPrefix(name, prefix) {
+				matches = append(matches, name)
+			}
+		}
+
+		if len(matches) == 0 {
+			return "", 0, false
+		}
+
+		sort.Strings(matches)
+
+		if len(matches) == 1 {
+			return matches[0] + " " + after, len(matches[0]) + 1, true
+		}
+
+		// Multiple matches: find common prefix
+		common := matches[0]
+		for _, m := range matches[1:] {
+			for i := 0; i < len(common) && i < len(m); i++ {
+				if common[i] != m[i] {
+					common = common[:i]
+					break
+				}
+			}
+			if len(common) == 0 {
+				break
+			}
+		}
+		return common + after, len(common), true
+	}
+
+	// File path completion
+	lastField := ""
+	if strings.HasSuffix(before, " ") {
+		// New argument starting
+		lastField = ""
+	} else {
+		lastField = fields[len(fields)-1]
+	}
+
+	dir := "."
+	prefix := lastField
+	if lastField != "" {
+		dir = filepath.Dir(lastField)
+		prefix = filepath.Base(lastField)
+		if strings.HasSuffix(lastField, string(filepath.Separator)) || strings.HasSuffix(lastField, "/") {
+			dir = lastField
+			prefix = ""
+		}
+	}
+
+	appInstance := app.GetApp()
+	absDir := dir
+	if !filepath.IsAbs(dir) {
+		absDir = filepath.Join(appInstance.GetCurrentDir(), dir)
+	}
+
+	entries, err := os.ReadDir(absDir)
+	if err != nil {
+		return "", 0, false
+	}
+
+	matches := []string{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, prefix) {
+			if entry.IsDir() {
+				name += string(filepath.Separator)
+			}
+			matches = append(matches, name)
+		}
+	}
+
+	if len(matches) == 0 {
+		return "", 0, false
+	}
+
+	sort.Strings(matches)
+
+	if len(matches) == 1 {
+		completed := filepath.Join(dir, matches[0])
+		// Reconstruct the line
+		prev := before[:len(before)-len(lastField)]
+		newLine := prev + completed + after
+		return newLine, len(prev + completed), true
+	}
+
+	// Multiple matches: find common prefix
+	common := matches[0]
+	for _, m := range matches[1:] {
+		for i := 0; i < len(common) && i < len(m); i++ {
+			if common[i] != m[i] {
+				common = common[:i]
+				break
+			}
+		}
+	}
+
+	completed := filepath.Join(dir, common)
+	prev := before[:len(before)-len(lastField)]
+	return prev + completed + after, len(prev + completed), true
+}
 
 // Start starts the Read-Eval-Print Loop.
 // It takes an io.Reader for input, an io.Writer for output, and an io.Writer for error output.
 func Start(in io.Reader, out io.Writer, errOut io.Writer) {
-	scanner := bufio.NewScanner(in)
-
 	// Create a context for the entire REPL lifecycle, cancelled on SIGTERM/SIGHUP
 	replCtx, replCancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGHUP)
 	defer replCancel() // Ensure this context is cancelled when Start returns
@@ -44,11 +199,28 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	// Get the configuration once at the start of REPL
 	cfg := config.GetConfig()
 
+	// Check if stdin is a terminal
+	isTerminal := term.IsTerminal(int(os.Stdin.Fd()))
+
+	var oldState *term.State
+	if isTerminal {
+		oldState, err = term.MakeRaw(int(os.Stdin.Fd()))
+		if err != nil {
+			isTerminal = false
+		} else {
+			defer term.Restore(int(os.Stdin.Fd()), oldState)
+		}
+	}
+
 	for {
 		// Check if the main REPL context has been cancelled
 		select {
 		case <-replCtx.Done():
-			fmt.Fprintf(out, "\nExiting dush REPL gracefully...\n")
+			if isTerminal {
+				fmt.Fprintf(out, "\r\nExiting dush REPL gracefully...\n")
+			} else {
+				fmt.Fprintf(out, "\nExiting dush REPL gracefully...\n")
+			}
 			return
 		default:
 			// Continue
@@ -59,44 +231,30 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 
 		// Construct the dynamic prompt using App's currentCWD
 		promptLine := fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, displayDirName, cfg.PromptSuffix)
-		fmt.Fprintf(out, promptLine)
 
-		// Create a cancellable context for the current command
-		cmdCtx, cmdCancel := context.WithCancel(replCtx) // Child context of replCtx
-		// Defer cmdCancel to ensure it's always called, but it might be called earlier by signal handler
-		defer func() {
-			// This defer will only run when the loop iteration finishes.
-			// It's crucial to call cmdCancel() to release resources even if not explicitly cancelled by Ctrl+C.
-			cmdCancel()
-		}()
-
-		// Set up signal handling for the current command
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt) // Capture Ctrl+C
-
-		go func() {
-			select {
-			case <-sigChan: // Ctrl+C received
-				fmt.Fprintln(errOut, "\nInterrupt received. Cancelling current command...")
-				cmdCancel() // Cancel the context for the current command
-			case <-cmdCtx.Done():
-				// Command finished or was cancelled by other means, stop listening to sigChan
+		var line string
+		if isTerminal {
+			le := &lineEditor{prompt: promptLine}
+			line, err = le.readLine(in, out)
+			if err != nil {
+				if err == io.EOF {
+					term.Restore(int(os.Stdin.Fd()), oldState)
+					fmt.Fprintf(out, "\r\nExiting dush REPL.\n")
+					return
+				}
+				// Other errors...
+				continue
 			}
-		}()
-
-		scanned := scanner.Scan()
-		// After scanner.Scan() returns, stop listening for signals on sigChan for this command
-		// and reset signal.Notify to its default or a new context for the next command.
-		// However, signal.Stop is tricky with multiple listeners.
-		// A simpler approach for cleanup is to rely on cmdCancel() and the goroutine
-		// exiting when cmdCtx.Done() is closed. The signal.Notify will stay active.
-
-		if !scanned {
-			fmt.Fprintf(out, "Exiting dush REPL.\n") // Inform user on EOF
-			return                                   // EOF or error
+		} else {
+			fmt.Fprintf(out, promptLine)
+			scanner := bufio.NewScanner(in)
+			if !scanner.Scan() {
+				fmt.Fprintf(out, "Exiting dush REPL.\n")
+				return
+			}
+			line = scanner.Text()
 		}
 
-		line := scanner.Text()
 		trimmedLine := strings.TrimSpace(line)
 		if trimmedLine == "" {
 			continue // Skip empty lines
@@ -110,7 +268,6 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		args := parts[1:]
 
 		// --- Start Alias Expansion ---
-		cfg := config.GetConfig() // Get current config to access aliases
 		if expandedValue, ok := cfg.Aliases[cmdName]; ok {
 			// If the command name is an alias, expand it
 			expandedParts := strings.Fields(expandedValue)
@@ -123,26 +280,40 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		// --- End Alias Expansion ---
 
 		if cmdName == "exit" || cmdName == "quit" {
-			fmt.Fprintf(out, "Exiting dush REPL.\n")
+			if isTerminal {
+				fmt.Fprintf(out, "\r\nExiting dush REPL.\n")
+			} else {
+				fmt.Fprintf(out, "Exiting dush REPL.\n")
+			}
 			return
 		}
 
-		// Check and execute built-in commands, passing the command context
+		// Create a cancellable context for the current command
+		cmdCtx, cmdCancel := context.WithCancel(replCtx)
+
+		// Check and execute built-in commands
 		if builtins.RunBuiltin(cmdCtx, cmdName, args, out, errOut) {
-			// Builtin handled, continue loop. cmdCancel will be called by defer.
+			// Builtin handled
 		} else {
 			// If not a built-in command, attempt to run as an external command
-			// For now, this is a placeholder.
-			fmt.Fprintf(out, "Command not found: %s\n", cmdName)
-			// In a future step, we will implement logic to search PATH and execute external commands here.
-		}
+			if isTerminal {
+				term.Restore(int(os.Stdin.Fd()), oldState)
+			}
 
-		// After command execution, ensure no lingering signal goroutine tries to cancel a context
-		// that's about to be recreated. The current goroutine naturally exits when cmdCtx.Done() is closed by cmdCancel().
-		// No explicit signal.Stop is needed if we're constantly notifying the same channel for all signals.
-		// However, it's safer to ensure we're not stacking signal listeners.
-		// signal.Reset(os.Interrupt) would remove all registrations for os.Interrupt.
-		// A more precise approach is to re-create sigChan for each command, ensuring only one listener per context.
-		// This is done by `sigChan := make(chan os.Signal, 1); signal.Notify(sigChan, os.Interrupt)` inside the loop.
+			err := evaluator.ExecuteExternal(cmdCtx, cmdName, args, out, errOut)
+			if err != nil {
+				if _, ok := err.(*exec.Error); ok {
+					fmt.Fprintf(out, "Command not found: %s\n", cmdName)
+				} else {
+					// Other errors (like execution failure)
+					fmt.Fprintf(out, "Error executing %s: %v\n", cmdName, err)
+				}
+			}
+
+			if isTerminal {
+				oldState, _ = term.MakeRaw(int(os.Stdin.Fd()))
+			}
+		}
+		cmdCancel()
 	}
 }

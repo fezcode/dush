@@ -3,12 +3,11 @@
 package utils
 
 import (
-	"fmt"
 	"io/fs"
 	"os/user"
 	"runtime"
 	"strconv"
-	"syscall" // This import is now safe due to build tag
+	"syscall"
 )
 
 func getOwnerAndGroupNamesPlatform(path string, info fs.FileInfo) (owner string, group string) {
