@@ -1,5 +1,7 @@
 # Dush - A Go Terminal Shell Project
 
+![Dush Title Card](title-card.png)
+
 This project aims to develop a custom terminal shell written in Go.
 
 ## Project Goal
