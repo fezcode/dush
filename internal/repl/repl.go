@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sort"
@@ -17,6 +16,9 @@ import (
 	"dush/internal/builtins"
 	"dush/internal/config"
 	"dush/internal/evaluator"
+	"dush/internal/evaluator/object"
+	"dush/internal/parser/lexer"
+	"dush/internal/parser/parser"
 	"dush/internal/utils"
 
 	"golang.org/x/term"
@@ -199,6 +201,11 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	// Get the configuration once at the start of REPL
 	cfg := config.GetConfig()
 
+	// Initialize the Environment
+	env := evaluator.NewEnvironment()
+	env.Stdout = out
+	env.Stderr = errOut
+
 	// Check if stdin is a terminal
 	isTerminal := term.IsTerminal(int(os.Stdin.Fd()))
 
@@ -246,7 +253,7 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 				continue
 			}
 		} else {
-			fmt.Fprintf(out, promptLine)
+			fmt.Fprintf(out, "%s", promptLine)
 			scanner := bufio.NewScanner(in)
 			if !scanner.Scan() {
 				fmt.Fprintf(out, "Exiting dush REPL.\n")
@@ -263,23 +270,16 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		// Add command to history before processing it
 		utils.AddCommand(trimmedLine)
 
+		// Basic Alias handling (Pre-processing)
 		parts := strings.Fields(trimmedLine)
-		cmdName := parts[0]
-		args := parts[1:]
-
-		// --- Start Alias Expansion ---
-		if expandedValue, ok := cfg.Aliases[cmdName]; ok {
-			// If the command name is an alias, expand it
-			expandedParts := strings.Fields(expandedValue)
-			if len(expandedParts) > 0 {
-				cmdName = expandedParts[0]
-				// Append original args to expanded alias args
-				args = append(expandedParts[1:], args...)
+		if len(parts) > 0 {
+			if expandedValue, ok := cfg.Aliases[parts[0]]; ok {
+				// Replace the first word with the alias value
+				trimmedLine = expandedValue + strings.TrimPrefix(trimmedLine, parts[0])
 			}
 		}
-		// --- End Alias Expansion ---
 
-		if cmdName == "exit" || cmdName == "quit" {
+		if trimmedLine == "exit" || trimmedLine == "quit" {
 			if isTerminal {
 				fmt.Fprintf(out, "\r\nExiting dush REPL.\n")
 			} else {
@@ -288,32 +288,33 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 			return
 		}
 
-		// Create a cancellable context for the current command
-		cmdCtx, cmdCancel := context.WithCancel(replCtx)
+		if isTerminal {
+			term.Restore(int(os.Stdin.Fd()), oldState)
+		}
 
-		// Check and execute built-in commands
-		if builtins.RunBuiltin(cmdCtx, cmdName, args, out, errOut) {
-			// Builtin handled
-		} else {
-			// If not a built-in command, attempt to run as an external command
-			if isTerminal {
-				term.Restore(int(os.Stdin.Fd()), oldState)
+		// --- New Parser/Evaluator Logic ---
+		l := lexer.New(trimmedLine)
+		p := parser.New(l)
+		program := p.ParseProgram()
+
+		if len(p.Errors()) != 0 {
+			for _, msg := range p.Errors() {
+				fmt.Fprintf(out, "Parse Error: %s\n", msg)
 			}
-
-			err := evaluator.ExecuteExternal(cmdCtx, cmdName, args, out, errOut)
-			if err != nil {
-				if _, ok := err.(*exec.Error); ok {
-					fmt.Fprintf(out, "Command not found: %s\n", cmdName)
-				} else {
-					// Other errors (like execution failure)
-					fmt.Fprintf(out, "Error executing %s: %v\n", cmdName, err)
+		} else {
+			evaluated := evaluator.Eval(program, env)
+			if evaluated != nil {
+				if evaluated.Type() != object.NULL_OBJ && evaluated.Type() != object.INTEGER_OBJ {
+					fmt.Fprintf(out, "%s\n", evaluated.Inspect())
+				}
+				if evaluated.Type() == object.ERROR_OBJ {
+					// Inspect handles printing "ERROR: msg"
 				}
 			}
-
-			if isTerminal {
-				oldState, _ = term.MakeRaw(int(os.Stdin.Fd()))
-			}
 		}
-		cmdCancel()
+
+		if isTerminal {
+			oldState, _ = term.MakeRaw(int(os.Stdin.Fd()))
+		}
 	}
 }

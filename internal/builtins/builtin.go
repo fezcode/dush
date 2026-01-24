@@ -28,6 +28,12 @@ func RegisterBuiltin(name string, cmd Command) {
 	registeredCommands[name] = cmd
 }
 
+// GetCommand retrieves a registered built-in command by name.
+func GetCommand(name string) (Command, bool) {
+	cmd, ok := registeredCommands[name]
+	return cmd, ok
+}
+
 // RunBuiltin checks if the given command name is a registered built-in command and executes it.
 // It returns true if a builtin was executed, false otherwise.
 // The context should be passed from the REPL to allow for cancellation.
