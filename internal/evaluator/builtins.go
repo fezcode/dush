@@ -27,25 +27,36 @@ var functionBuiltins = map[string]*object.Builtin{
 			return NULL
 		},
 	},
-	"var": {
+	"format": {
 		Fn: func(args ...object.Object) object.Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			if len(args) < 1 {
+				return newError("format requires at least 1 argument")
 			}
-			// var(x) takes an Identifier? Or string name?
-			// In parser, var(x) -> Call(var, [Ident(x)]).
-			// Eval(Ident(x)) -> Value of x.
-			// So var(x) is redundant in code context?
-			// Wait, spec: "echo var(x)".
-			// Command args are parsed as expressions.
-			// Identifier(x) -> String "x" (fallback).
-			// So Eval(Ident(x)) returns "x" (String).
-			// Then var("x") is called.
-			// So `var` function should take a string and look it up in the environment?
-			// BUT `BuiltinFunction` doesn't have access to `env`!
-			// This is a problem. Builtins usually are pure.
-			// `var` needs Env access.
-			return newError("var() cannot be used this way")
+			formatStr, ok := args[0].(*object.String)
+			if !ok {
+				return newError("first argument to format must be a string")
+			}
+
+			// Simple %v style replacement?
+			// Or just fmt.Sprintf wrapper?
+			// fmt.Sprintf expects []interface{}. We have []object.Object.
+			// We need to convert.
+
+			goArgs := make([]interface{}, len(args)-1)
+			for i, arg := range args[1:] {
+				switch a := arg.(type) {
+				case *object.String:
+					goArgs[i] = a.Value
+				case *object.Integer:
+					goArgs[i] = a.Value
+				case *object.Boolean:
+					goArgs[i] = a.Value
+				default:
+					goArgs[i] = a.Inspect()
+				}
+			}
+
+			return &object.String{Value: fmt.Sprintf(formatStr.Value, goArgs...)}
 		},
 	},
 }

@@ -103,39 +103,6 @@ func Eval(node ast.Node, env *Environment) object.Object {
 	case *ast.LoopStatement:
 		return evalLoopStatement(node, env)
 	case *ast.CallExpression:
-		// Special form: var(name)
-		if ident, ok := node.Function.(*ast.Identifier); ok && ident.Value == "var" {
-			if len(node.Arguments) != 1 {
-				return newError("var takes 1 argument")
-			}
-			arg := node.Arguments[0]
-			var name string
-			if id, ok := arg.(*ast.Identifier); ok {
-				name = id.Value
-			} else if str, ok := arg.(*ast.StringLiteral); ok {
-				name = str.Value
-			} else {
-				val := Eval(arg, env)
-				if isError(val) {
-					return val
-				}
-				if s, ok := val.(*object.String); ok {
-					name = s.Value
-				} else {
-					return newError("var argument must be identifier or string")
-				}
-			}
-
-			if val, ok := env.Get(name); ok {
-				return val
-			}
-			// Check env vars?
-			if val := os.Getenv(name); val != "" {
-				return &object.String{Value: val}
-			}
-			return newError("variable not found: %s", name)
-		}
-
 		function := Eval(node.Function, env)
 		if isError(function) {
 			return function
@@ -260,29 +227,22 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 }
 
 func evalIdentifier(node *ast.Identifier, env *Environment) object.Object {
-	// Strict Mode: Bare identifiers are NOT variables (integers, strings, etc).
-	// But they CAN be Functions (procedures).
-
+	// 1. Try Environment (Variables, Functions)
 	if val, ok := env.Get(node.Value); ok {
-		if val.Type() == object.FUNCTION_OBJ {
-			return val
-		}
-		// If it's data, we ignore it here. Must use var().
+		return val
 	}
 
+	// 2. Try Builtins (len, format)
 	if builtin, ok := functionBuiltins[node.Value]; ok {
 		return builtin
 	}
 
-	// Fallback: Treat as command (0 args)
-	cmdNode := &ast.CommandExpression{
-		Token: node.Token,
-		Name:  node.Value,
-		Args:  []ast.Expression{},
-	}
-	return evalCommandExpression(cmdNode, env)
+	// 3. Fallback: Treat as String Literal (Bare word)
+	// This enables "echo hello" to work without quotes.
+	// But it also means "unknown_variable" becomes string "unknown_variable".
+	// This is standard shell behavior.
+	return &object.String{Value: node.Value}
 }
-
 func evalCommandExpression(node *ast.CommandExpression, env *Environment) object.Object {
 	var args []string
 	for _, argExpr := range node.Args {
