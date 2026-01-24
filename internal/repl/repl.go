@@ -219,6 +219,8 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		}
 	}
 
+	var commandBuffer string
+
 	for {
 		// Check if the main REPL context has been cancelled
 		select {
@@ -237,7 +239,12 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		displayDirName := utils.GetDisplayDirName(currentCWD)
 
 		// Construct the dynamic prompt using App's currentCWD
-		promptLine := fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, displayDirName, cfg.PromptSuffix)
+		var promptLine string
+		if commandBuffer == "" {
+			promptLine = fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, displayDirName, cfg.PromptSuffix)
+		} else {
+			promptLine = "... " // Continuation prompt
+		}
 
 		var line string
 		if isTerminal {
@@ -263,45 +270,82 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		}
 
 		trimmedLine := strings.TrimSpace(line)
+
+		// If line is empty, continue logic depends on buffer
 		if trimmedLine == "" {
-			continue // Skip empty lines
-		}
-
-		// Add command to history before processing it
-		utils.AddCommand(trimmedLine)
-
-		// Basic Alias handling (Pre-processing)
-		parts := strings.Fields(trimmedLine)
-		if len(parts) > 0 {
-			if expandedValue, ok := cfg.Aliases[parts[0]]; ok {
-				// Replace the first word with the alias value
-				trimmedLine = expandedValue + strings.TrimPrefix(trimmedLine, parts[0])
+			if commandBuffer != "" {
+				commandBuffer += "\n" // Add newline to buffer
+				continue
 			}
+			continue // Skip empty lines if buffer is empty
 		}
 
-		if trimmedLine == "exit" || trimmedLine == "quit" {
-			if isTerminal {
-				fmt.Fprintf(out, "\r\nExiting dush REPL.\n")
-			} else {
-				fmt.Fprintf(out, "Exiting dush REPL.\n")
-			}
-			return
+		// Append to buffer
+		if commandBuffer == "" {
+			commandBuffer = trimmedLine
+		} else {
+			commandBuffer += "\n" + trimmedLine
 		}
 
-		if isTerminal {
-			term.Restore(int(os.Stdin.Fd()), oldState)
-		}
-
-		// --- New Parser/Evaluator Logic ---
-		l := lexer.New(trimmedLine)
+		// Attempt to parse
+		l := lexer.New(commandBuffer)
 		p := parser.New(l)
 		program := p.ParseProgram()
 
 		if len(p.Errors()) != 0 {
+			// Check for unexpected EOF
+			isIncomplete := false
+			for _, msg := range p.Errors() {
+				if strings.Contains(msg, "unexpected EOF") ||
+					strings.Contains(msg, "expected next token to be }, got EOF instead") ||
+					strings.Contains(msg, "expected next token to be ), got EOF instead") {
+					isIncomplete = true
+					break
+				}
+			}
+
+			if isIncomplete {
+				continue // Read more input
+			}
+
+			// Real Error
 			for _, msg := range p.Errors() {
 				fmt.Fprintf(out, "Parse Error: %s\n", msg)
 			}
+			// Reset buffer on error
+			commandBuffer = ""
+			utils.AddCommand(trimmedLine) // Add failed command to history? Or buffer?
+			// Maybe add the whole buffer? For now, simplistic history.
 		} else {
+			// Success parsing
+
+			// Add command to history before processing it
+			utils.AddCommand(commandBuffer)
+
+			// Pre-processing aliases?
+			// Aliases usually apply to the first word of the command.
+			// Only apply if it's a single line or check first word of buffer?
+			// Applying to buffer:
+			parts := strings.Fields(commandBuffer)
+			if len(parts) > 0 {
+				if expandedValue, ok := cfg.Aliases[parts[0]]; ok {
+					commandBuffer = expandedValue + strings.TrimPrefix(commandBuffer, parts[0])
+				}
+			}
+
+			if commandBuffer == "exit" || commandBuffer == "quit" {
+				if isTerminal {
+					fmt.Fprintf(out, "\r\nExiting dush REPL.\n")
+				} else {
+					fmt.Fprintf(out, "Exiting dush REPL.\n")
+				}
+				return
+			}
+
+			if isTerminal {
+				term.Restore(int(os.Stdin.Fd()), oldState)
+			}
+
 			evaluated := evaluator.Eval(program, env)
 			if evaluated != nil {
 				if evaluated.Type() != object.NULL_OBJ && evaluated.Type() != object.INTEGER_OBJ {
@@ -311,10 +355,13 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 					// Inspect handles printing "ERROR: msg"
 				}
 			}
-		}
 
-		if isTerminal {
-			oldState, _ = term.MakeRaw(int(os.Stdin.Fd()))
+			// Reset buffer after execution
+			commandBuffer = ""
+
+			if isTerminal {
+				oldState, _ = term.MakeRaw(int(os.Stdin.Fd()))
+			}
 		}
 	}
 }

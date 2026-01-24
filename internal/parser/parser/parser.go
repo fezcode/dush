@@ -362,6 +362,11 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 		p.nextToken()
 	}
 
+	if p.curTokenIs(token.EOF) {
+		p.errors = append(p.errors, "unexpected EOF")
+		return nil
+	}
+
 	return block
 }
 
