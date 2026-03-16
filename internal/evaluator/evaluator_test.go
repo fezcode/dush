@@ -146,3 +146,187 @@ func testNullObject(t *testing.T, obj object.Object) bool {
 	}
 	return true
 }
+
+func TestStringBuiltinFunctions(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{`len("hello")`, 5},
+		{`to_upper("hello")`, "HELLO"},
+		{`replace("hello world", "world", "dush")`, "hello dush"},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, evaluated, int64(expected))
+		case string:
+			errObj, ok := evaluated.(*object.Error)
+			if ok {
+				t.Errorf("got error object: %s", errObj.Message)
+				continue
+			}
+			strObj, ok := evaluated.(*object.String)
+			if !ok {
+				t.Errorf("object is not String. got=%T (%+v)", evaluated, evaluated)
+				continue
+			}
+			if strObj.Value != expected {
+				t.Errorf("wrong string value. expected=%q, got=%q", expected, strObj.Value)
+			}
+		}
+	}
+}
+
+func TestReturnStatements(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"proc add(x, y) { return x + y }; add(2, 3)", 5},
+		{"proc early(x) { if (x > 0) { return x }; return 0 }; early(5)", 5},
+		{"proc early(x) { if (x > 0) { return x }; return 0 }; early(-1)", 0},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testIntegerObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestFloatExpressions(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected float64
+	}{
+		{"3.14", 3.14},
+		{"-2.5", -2.5},
+		{"1.5 + 2.5", 4.0},
+		{"10.0 - 3.5", 6.5},
+		{"2.0 * 3.0", 6.0},
+		{"7.0 / 2.0", 3.5},
+		// Mixed int/float
+		{"1 + 2.5", 3.5},
+		{"10 * 0.5", 5.0},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		result, ok := evaluated.(*object.Float)
+		if !ok {
+			t.Errorf("object is not Float. got=%T (%+v) for input %q", evaluated, evaluated, tt.input)
+			continue
+		}
+		if result.Value != tt.expected {
+			t.Errorf("wrong float value for %q. got=%f, want=%f", tt.input, result.Value, tt.expected)
+		}
+	}
+}
+
+func TestModuloOperator(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"10 % 3", 1},
+		{"15 % 5", 0},
+		{"7 % 2", 1},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testIntegerObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestStringComparison(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`"hello" == "hello"`, true},
+		{`"hello" == "world"`, false},
+		{`"hello" != "world"`, true},
+		{`"hello" != "hello"`, false},
+		{`"abc" < "def"`, true},
+		{`"def" > "abc"`, true},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestArrayIteration(t *testing.T) {
+	input := `let arr = split("a,b,c", ","); let result = ""; loop (x : arr) { result = result + x }; result`
+	evaluated := testEval(input)
+	strObj, ok := evaluated.(*object.String)
+	if !ok {
+		t.Fatalf("object is not String. got=%T (%+v)", evaluated, evaluated)
+	}
+	if strObj.Value != "abc" {
+		t.Errorf("wrong value. got=%q, want=%q", strObj.Value, "abc")
+	}
+}
+
+func TestArrayLen(t *testing.T) {
+	input := `len(split("a,b,c", ","))`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 3)
+}
+
+func TestProcLiteral(t *testing.T) {
+	input := `let add = proc(x, y) { x + y }; add(3, 4)`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 7)
+}
+
+func TestTypeBuiltin(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`type(5)`, "INTEGER"},
+		{`type(3.14)`, "FLOAT"},
+		{`type("hello")`, "STRING"},
+		{`type(true)`, "BOOLEAN"},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		strObj, ok := evaluated.(*object.String)
+		if !ok {
+			t.Errorf("object is not String. got=%T (%+v) for input %q", evaluated, evaluated, tt.input)
+			continue
+		}
+		if strObj.Value != tt.expected {
+			t.Errorf("wrong value for %q. got=%q, want=%q", tt.input, strObj.Value, tt.expected)
+		}
+	}
+}
+
+func TestIntegerLoop(t *testing.T) {
+	input := `let sum = 0; loop (i : 5) { sum = sum + i }; sum`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 10) // 0+1+2+3+4 = 10
+}
+
+func TestFileBuiltinFunctions(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`exists(".")`, true},
+		{`is_dir(".")`, true},
+		{`exists("non_existent_file_12345")`, false},
+		{`is_dir("non_existent_file_12345")`, false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}

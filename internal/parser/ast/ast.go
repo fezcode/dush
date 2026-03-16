@@ -130,6 +130,16 @@ func (il *IntegerLiteral) expressionNode()      {}
 func (il *IntegerLiteral) TokenLiteral() string { return il.Token.Literal }
 func (il *IntegerLiteral) String() string       { return il.Token.Literal }
 
+// FloatLiteral: 3.14
+type FloatLiteral struct {
+	Token token.Token
+	Value float64
+}
+
+func (fl *FloatLiteral) expressionNode()      {}
+func (fl *FloatLiteral) TokenLiteral() string { return fl.Token.Literal }
+func (fl *FloatLiteral) String() string       { return fl.Token.Literal }
+
 // StringLiteral: "hello"
 type StringLiteral struct {
 	Token token.Token
@@ -258,6 +268,28 @@ func (ps *ProcStatement) String() string {
 	return out.String()
 }
 
+// ProcLiteral: proc(x, y) { ... } (anonymous function)
+type ProcLiteral struct {
+	Token      token.Token // The 'proc' token
+	Parameters []*Identifier
+	Body       *BlockStatement
+}
+
+func (pl *ProcLiteral) expressionNode()      {}
+func (pl *ProcLiteral) TokenLiteral() string { return pl.Token.Literal }
+func (pl *ProcLiteral) String() string {
+	var out bytes.Buffer
+	out.WriteString("proc(")
+	params := []string{}
+	for _, p := range pl.Parameters {
+		params = append(params, p.String())
+	}
+	out.WriteString(strings.Join(params, ", "))
+	out.WriteString(") ")
+	out.WriteString(pl.Body.String())
+	return out.String()
+}
+
 // LoopStatement: loop (x < 10) OR loop (x : items)
 type LoopStatement struct {
 	Token     token.Token // LOOP
@@ -299,5 +331,29 @@ func (ce *CommandExpression) String() string {
 		out.WriteString(" " + arg.String())
 	}
 	out.WriteString(")")
+	return out.String()
+}
+
+// WithExpression: with (ENV="val") { ... }
+type WithExpression struct {
+	Token        token.Token // The 'with' token
+	EnvOverrides map[string]Expression
+	Body         *BlockStatement
+}
+
+func (we *WithExpression) expressionNode()      {}
+func (we *WithExpression) TokenLiteral() string { return we.Token.Literal }
+func (we *WithExpression) String() string {
+	var out bytes.Buffer
+	out.WriteString("with (")
+	
+	pairs := []string{}
+	for k, v := range we.EnvOverrides {
+		pairs = append(pairs, k+"="+v.String())
+	}
+	out.WriteString(strings.Join(pairs, ", "))
+	
+	out.WriteString(") ")
+	out.WriteString(we.Body.String())
 	return out.String()
 }

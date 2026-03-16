@@ -64,6 +64,8 @@ func (l *Lexer) NextToken() token.Token {
 		tok = newToken(token.SLASH, l.ch)
 	case '*':
 		tok = newToken(token.ASTERISK, l.ch)
+	case '%':
+		tok = newToken(token.MODULO, l.ch)
 	case '<':
 		tok = newToken(token.LT, l.ch)
 	case '>':
@@ -123,9 +125,15 @@ func (l *Lexer) NextToken() token.Token {
 			tok.Type = token.LookupIdent(tok.Literal)
 			return tok
 		} else if isDigit(l.ch) {
-			// TODO: Float support (detect dot)
-			tok.Type = token.INT
 			tok.Literal = l.readNumber()
+			if l.ch == '.' && isDigit(l.peekChar()) {
+				tok.Literal += string(l.ch)
+				l.readChar()
+				tok.Literal += l.readNumber()
+				tok.Type = token.FLOAT
+			} else {
+				tok.Type = token.INT
+			}
 			return tok
 		} else {
 			tok = newToken(token.ILLEGAL, l.ch)
@@ -192,7 +200,7 @@ func newToken(tokenType token.TokenType, ch byte) token.Token {
 }
 
 func isLetter(ch byte) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_' || ch == '.' // Allow dots in identifiers for filenames like main.go (Wait, barewords might need different handling)
+	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_' || ch == '.' || ch == ':' || ch == '\\'
 }
 
 func isDigit(ch byte) bool {

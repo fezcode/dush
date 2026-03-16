@@ -49,6 +49,7 @@ type ObjectType string
 
 const (
 	INTEGER_OBJ      = "INTEGER"
+	FLOAT_OBJ        = "FLOAT"
 	BOOLEAN_OBJ      = "BOOLEAN"
 	STRING_OBJ       = "STRING"
 	NULL_OBJ         = "NULL"
@@ -56,6 +57,7 @@ const (
 	ERROR_OBJ        = "ERROR"
 	FUNCTION_OBJ     = "FUNCTION"
 	BUILTIN_OBJ      = "BUILTIN"
+	ARRAY_OBJ        = "ARRAY"
 )
 
 type BuiltinFunction func(args ...Object) Object
@@ -78,6 +80,13 @@ type Integer struct {
 
 func (i *Integer) Inspect() string  { return fmt.Sprintf("%d", i.Value) }
 func (i *Integer) Type() ObjectType { return INTEGER_OBJ }
+
+type Float struct {
+	Value float64
+}
+
+func (f *Float) Inspect() string  { return fmt.Sprintf("%g", f.Value) }
+func (f *Float) Type() ObjectType { return FLOAT_OBJ }
 
 type Boolean struct {
 	Value bool
@@ -111,3 +120,20 @@ type Error struct {
 
 func (e *Error) Inspect() string  { return "ERROR: " + e.Message }
 func (e *Error) Type() ObjectType { return ERROR_OBJ }
+
+type Array struct {
+	Elements []Object
+}
+
+func (a *Array) Type() ObjectType { return ARRAY_OBJ }
+func (a *Array) Inspect() string {
+	var out bytes.Buffer
+	elements := []string{}
+	for _, e := range a.Elements {
+		elements = append(elements, e.Inspect())
+	}
+	out.WriteString("[")
+	out.WriteString(strings.Join(elements, ", "))
+	out.WriteString("]")
+	return out.String()
+}

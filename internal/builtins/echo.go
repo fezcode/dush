@@ -10,9 +10,20 @@ import (
 type EchoCommand struct{}
 
 func (c *EchoCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
-	// Simple echo implementation
-	// TODO: Support flags like -n (no newline)
-	fmt.Fprintln(out, strings.Join(args, " "))
+	noNewline := false
+	startIdx := 0
+
+	if len(args) > 0 && args[0] == "-n" {
+		noNewline = true
+		startIdx = 1
+	}
+
+	output := strings.Join(args[startIdx:], " ")
+	if noNewline {
+		fmt.Fprint(out, output)
+	} else {
+		fmt.Fprintln(out, output)
+	}
 	return nil
 }
 
