@@ -48,10 +48,15 @@ Dush is a strictly typed, C-style scripting language that treats shell commands 
   - The special variable `LAST_STATUS` holds the exit code of the last run command.
 
 ## 7. Built-in Functions & Commands
-- **Commands:** `ls`, `cd`, `echo`.
+- **Commands:** `ls`, `cd`, `echo`, `export`, `source`, `.`.
 - **Functions:**
   - `len(str)`: Returns length of string.
   - `var(name)`: Returns value of variable.
+
+---
+
+## 8. Startup Profile
+When `dush` is started as an interactive shell, it automatically looks for and executes a `~/.dushis` (Dush Interactive Shell) file in the user's home directory. You can use this file to configure environment variables, create aliases, and define procedures.
 
 ---
 

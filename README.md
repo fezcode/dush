@@ -9,12 +9,13 @@ The primary goal of Dush is to create a functional and extensible command-line i
 
 ## Features
 - [x] **Command Execution**: Execute external programs and commands.
-- [x] **Built-in Commands**: Implement essential shell built-in commands (e.g., `cd`, `exit`, `pwd`).
-- [ ] **Input/Output Redirection**: Support basic I/O redirection (`<`, `>`, `>>`).
-- [ ] **Piping**: Allow chaining commands with pipes (`|`).
-- [ ] **Environment Variables**: Manage and access environment variables.
+- [x] **Built-in Commands**: Implement essential shell built-in commands (e.g., `cd`, `exit`, `pwd`, `export`, `source`).
+- [x] **Input/Output Redirection**: Support basic I/O redirection (`<`, `>`, `>>`).
+- [x] **Piping**: Allow chaining commands with pipes (`|`).
+- [x] **Environment Variables**: Manage and access environment variables.
 - [x] **Command History**: Basic command history for easy recall.
 - [ ] **Customizable Prompt**: A dynamic and informative shell prompt.
+- [x] **Interactive Shell Profile**: Auto-loads `~/.dushis` script on startup.
 
 ## Getting Started
 

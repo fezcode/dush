@@ -206,6 +206,14 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	env.Stdout = out
 	env.Stderr = errOut
 
+	// Source ~/.dushis if it exists
+	if home, err := os.UserHomeDir(); err == nil {
+		rcPath := filepath.Join(home, ".dushis")
+		if _, err := os.Stat(rcPath); err == nil {
+			evaluator.EvalSource(rcPath, env)
+		}
+	}
+
 	// Check if stdin is a terminal
 	isTerminal := term.IsTerminal(int(os.Stdin.Fd()))
 
@@ -348,11 +356,8 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 
 			evaluated := evaluator.Eval(program, env)
 			if evaluated != nil {
-				if evaluated.Type() != object.NULL_OBJ && evaluated.Type() != object.INTEGER_OBJ {
-					fmt.Fprintf(out, "%s\n", evaluated.Inspect())
-				}
 				if evaluated.Type() == object.ERROR_OBJ {
-					// Inspect handles printing "ERROR: msg"
+					fmt.Fprintf(out, "%s\n", evaluated.Inspect())
 				}
 			}
 

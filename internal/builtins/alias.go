@@ -73,10 +73,6 @@ func (c *AliasCommand) Execute(ctx context.Context, args []string, out io.Writer
 		return nil
 	}
 
-	fmt.Printf("=========\n%v\n============\n%d", filteredArgs, len(filteredArgs))
-	fmt.Printf(">> %v\n", filteredArgs[0])
-	fmt.Printf(">> %v\n", filteredArgs[1])
-
 	if len(filteredArgs) == 1 {
 		arg := filteredArgs[0]
 		if strings.Contains(arg, "=") {
@@ -96,7 +92,6 @@ func (c *AliasCommand) Execute(ctx context.Context, args []string, out io.Writer
 	if setAlias != "" {
 		// `alias name=value`: Set an alias
 		parts := strings.SplitN(setAlias, "=", 2)
-		fmt.Printf("=========\n%v\n============\n", parts)
 
 		name := parts[0]
 		value := parts[1]

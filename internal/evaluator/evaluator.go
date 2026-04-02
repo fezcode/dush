@@ -478,7 +478,24 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 			}
 		}
 
+		// Apply Tilde (~) expansion
+		if strings.HasPrefix(argStr, "~") {
+			if home, err := os.UserHomeDir(); err == nil {
+				argStr = filepath.Join(home, strings.TrimPrefix(argStr, "~"))
+			}
+		}
+
 		args = append(args, argStr)
+	}
+
+	// Check Special Evaluator Builtins (source, .)
+	if node.Name == "source" || node.Name == "." {
+		if len(args) != 1 {
+			fmt.Fprintf(env.Stderr, "%s: filename argument required\n", node.Name)
+			env.Set("LAST_STATUS", &object.Integer{Value: 1})
+			return nativeBoolToBooleanObject(false)
+		}
+		return EvalSource(args[0], env)
 	}
 
 	// Check Registered Builtins (ls, cd, echo, etc.)
