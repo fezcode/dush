@@ -35,20 +35,6 @@ type terminalIO struct {
 	io.Writer
 }
 
-func (le *lineEditor) readLine(stdin io.Reader, stdout io.Writer) (string, error) {
-	t := term.NewTerminal(terminalIO{stdin, stdout}, le.prompt)
-
-	// Set autocomplete callback
-	t.AutoCompleteCallback = func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
-		if key == '\t' {
-			return le.autoComplete(line, pos)
-		}
-		return "", 0, false
-	}
-
-	return t.ReadLine()
-}
-
 func (le *lineEditor) autoComplete(line string, pos int) (string, int, bool) {
 	before := line[:pos]
 	after := line[pos:]
@@ -218,12 +204,31 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	isTerminal := term.IsTerminal(int(os.Stdin.Fd()))
 
 	var oldState *term.State
+	var t *term.Terminal
+	var le *lineEditor
+
 	if isTerminal {
 		oldState, err = term.MakeRaw(int(os.Stdin.Fd()))
 		if err != nil {
 			isTerminal = false
 		} else {
 			defer term.Restore(int(os.Stdin.Fd()), oldState)
+			t = term.NewTerminal(terminalIO{in, out}, "")
+			le = &lineEditor{}
+			t.AutoCompleteCallback = func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
+				if key == '\t' {
+					return le.autoComplete(line, pos)
+				}
+				return "", 0, false
+			}
+
+			// Pre-fill history for arrow keys navigation
+			// The term package's default History records the last 100 lines.
+			for _, h := range utils.GetHistory() {
+				if t.History != nil {
+					t.History.Add(h)
+				}
+			}
 		}
 	}
 
@@ -256,8 +261,8 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 
 		var line string
 		if isTerminal {
-			le := &lineEditor{prompt: promptLine}
-			line, err = le.readLine(in, out)
+			t.SetPrompt(promptLine)
+			line, err = t.ReadLine()
 			if err != nil {
 				if err == io.EOF {
 					term.Restore(int(os.Stdin.Fd()), oldState)
