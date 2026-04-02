@@ -412,30 +412,13 @@ func evalIdentifier(node *ast.Identifier, env *Environment) object.Object {
 	}
 
 	// 3. Try Command Execution (ls, git, etc.)
-	// If it's a known command, execute it instead of returning string.
-	// Check built-in commands
-	isCmd := false
-	if _, ok := builtins.GetCommand(node.Value); ok {
-		isCmd = true
-	} else {
-		// Check system path
-		_, err := exec.LookPath(node.Value)
-		if err == nil {
-			isCmd = true
-		}
+	// If it's an unknown identifier, we treat it as a command.
+	cmdNode := &ast.CommandExpression{
+		Token: node.Token,
+		Name:  node.Value,
+		Args:  []ast.Expression{},
 	}
-
-	if isCmd {
-		cmdNode := &ast.CommandExpression{
-			Token: node.Token,
-			Name:  node.Value,
-			Args:  []ast.Expression{},
-		}
-		return evalCommandExpression(cmdNode, env)
-	}
-
-	// 4. Fallback: Treat as String Literal (Bare word)
-	return &object.String{Value: node.Value}
+	return evalCommandExpression(cmdNode, env)
 }
 func evalCommandExpression(node *ast.CommandExpression, env *Environment) object.Object {
 	var args []string
