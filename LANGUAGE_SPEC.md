@@ -38,7 +38,7 @@ Dush is a strictly typed, C-style scripting language that treats shell commands 
   - `x` -> Runs command `x`.
 - **Arguments:**
   - Strings: `"hello world"`
-  - Variables: `var(name)`
+  - Variables: `name` (Automatically resolved if it exists locally or in OS environment, otherwise treated as string literal `"name"`)
   - Function Calls: `len("str")`
   - Flags: `-la` (Parsed as strings)
 - **Command Chaining:**
@@ -75,4 +75,4 @@ The following features are designed but not yet implemented in v1.
 - **String Library:**
   - `split(str, sep)`, `replace(str, old, new)`, `to_upper(str)`
 - **File Library:**
-  - `exists(path)`, `is_dir(path)`
+  - `exists(path)`, `is_dir(path)``exists(path)`, `is_dir(path)`
