@@ -32,8 +32,14 @@ type Environment struct {
 
 func (e *Environment) Get(name string) (object.Object, bool) {
 	obj, ok := e.store[name]
-	if !ok && e.outer != nil {
-		obj, ok = e.outer.Get(name)
+	if !ok {
+		if e.outer != nil {
+			obj, ok = e.outer.Get(name)
+		} else {
+			if val, exists := os.LookupEnv(name); exists {
+				return &object.String{Value: val}, true
+			}
+		}
 	}
 	return obj, ok
 }
