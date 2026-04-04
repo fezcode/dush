@@ -75,6 +75,8 @@ func Eval(node ast.Node, env *Environment) object.Object {
 		return evalIdentifier(node, env)
 	case *ast.CommandExpression:
 		return evalCommandExpression(node, env)
+	case *ast.BackgroundExpression:
+		return evalBackgroundExpression(node, env)
 	case *ast.BlockStatement:
 		return evalBlockStatement(node, env)
 	case *ast.IfExpression:
@@ -571,6 +573,124 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 
 	env.ShellSet("LAST_STATUS", &object.Integer{Value: exitCode})
 	return nativeBoolToBooleanObject(exitCode == 0)
+}
+
+func evalBackgroundExpression(node *ast.BackgroundExpression, env *Environment) object.Object {
+	// Build the command description from the AST
+	cmdDesc := node.Expression.String()
+
+	// For command expressions, we can start the process without waiting
+	if cmdNode, ok := node.Expression.(*ast.CommandExpression); ok {
+		return evalBackgroundCommand(cmdNode, cmdDesc, env)
+	}
+
+	// For other expressions (pipes, chains), run in a goroutine
+	bgEnv := NewEnclosedEnvironment(env)
+	bgEnv.Stdout = env.Stdout
+	bgEnv.Stderr = env.Stderr
+	bgEnv.Stdin = env.Stdin
+
+	// Create a job with no exec.Cmd (expression-based)
+	job := Jobs.Add(cmdDesc, nil)
+	fmt.Fprintf(env.Stderr, "[%d] started\n", job.ID)
+
+	go func() {
+		Eval(node.Expression, bgEnv)
+		Jobs.MarkDone(job.ID, nil)
+		fmt.Fprintf(env.Stderr, "[%d] done\t%s\n", job.ID, cmdDesc)
+	}()
+
+	env.ShellSet("LAST_STATUS", &object.Integer{Value: 0})
+	return &object.Integer{Value: int64(job.ID)}
+}
+
+func evalBackgroundCommand(node *ast.CommandExpression, cmdDesc string, env *Environment) object.Object {
+	// Build args the same way as evalCommandExpression
+	var args []string
+	for _, argExpr := range node.Args {
+		var argStr string
+		switch arg := argExpr.(type) {
+		case *ast.VarExpression:
+			val, ok := env.Get(arg.Name)
+			if !ok {
+				return newError("undefined variable '@%s'", arg.Name)
+			}
+			argStr = objectToString(val)
+		case *ast.StringLiteral:
+			argStr = arg.Value
+		default:
+			val := Eval(argExpr, env)
+			if isError(val) {
+				return val
+			}
+			argStr = objectToString(val)
+		}
+
+		if strings.ContainsAny(argStr, "*?") {
+			matches, err := filepath.Glob(argStr)
+			if err == nil && len(matches) > 0 {
+				args = append(args, matches...)
+				continue
+			}
+		}
+
+		if strings.HasPrefix(argStr, "~") {
+			if home, err := os.UserHomeDir(); err == nil {
+				argStr = filepath.Join(home, strings.TrimPrefix(argStr, "~"))
+			}
+		}
+
+		args = append(args, argStr)
+	}
+
+	// Check if the command is a builtin — run it in a goroutine instead of exec
+	if builtinCmd, ok := builtins.GetCommand(node.Name); ok {
+		bgEnv := NewEnclosedEnvironment(env)
+		bgEnv.Stdout = env.Stdout
+		bgEnv.Stderr = env.Stderr
+		bgEnv.Stdin = env.Stdin
+
+		job := Jobs.Add(cmdDesc, nil)
+		fmt.Fprintf(env.Stderr, "[%d] started\n", job.ID)
+
+		go func() {
+			err := builtinCmd.Execute(context.Background(), args, bgEnv.Stdout, bgEnv.Stderr)
+			Jobs.MarkDone(job.ID, err)
+		}()
+
+		env.ShellSet("LAST_STATUS", &object.Integer{Value: 0})
+		return &object.Integer{Value: int64(job.ID)}
+	}
+
+	cmd := exec.Command(node.Name, args...)
+	if errors.Is(cmd.Err, exec.ErrDot) {
+		cmd.Err = nil
+	}
+	cmd.Stdout = env.Stdout
+	cmd.Stderr = env.Stderr
+
+	exports := env.GetExportedVars()
+	if len(exports) > 0 {
+		cmd.Env = os.Environ()
+		for k, v := range exports {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+
+	if err := cmd.Start(); err != nil {
+		return newError("failed to start background job: %s", err)
+	}
+
+	job := Jobs.Add(cmdDesc, cmd)
+	fmt.Fprintf(env.Stderr, "[%d] %d\n", job.ID, cmd.Process.Pid)
+
+	go func() {
+		err := cmd.Wait()
+		Jobs.MarkDone(job.ID, err)
+	}()
+
+	env.ShellSet("LAST_STATUS", &object.Integer{Value: 0})
+	return &object.Integer{Value: int64(job.ID)}
 }
 
 func objectToString(obj object.Object) string {

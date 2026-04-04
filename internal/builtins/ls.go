@@ -396,7 +396,7 @@ func printLsHelp(out io.Writer) {
 List directory contents with colors and icons.
 
 Options:
-  -l, --long        Long format with permissions, size, owner, timestamps
+  -l, --long        Long format with permissions, size, owner, created/modified times
   -a, --all         Show hidden (dot) files
   -1, --oneline     One entry per line
   -r, --reverse     Reverse sort order
@@ -486,11 +486,12 @@ func (c *LsCommand) Execute(ctx context.Context, args []string, out io.Writer, e
 		// Table header
 		if opts.Header {
 			header := fmt.Sprintf(
-				"%s  %s  %s  %s  %s  %s  %s",
+				"%s  %s  %s  %s  %s  %s  %s  %s",
 				utils.Colorize("Permissions", utils.StyleBold+utils.StyleUnderline),
 				utils.Colorize("Size", utils.StyleBold+utils.StyleUnderline),
 				utils.Colorize("User", utils.StyleBold+utils.StyleUnderline),
 				utils.Colorize("Group", utils.StyleBold+utils.StyleUnderline),
+				utils.Colorize("Created", utils.StyleBold+utils.StyleUnderline),
 				utils.Colorize("Modified", utils.StyleBold+utils.StyleUnderline),
 				utils.Colorize("", ""), // icon placeholder
 				utils.Colorize("Name", utils.StyleBold+utils.StyleUnderline),
@@ -527,6 +528,8 @@ func (c *LsCommand) Execute(ctx context.Context, args []string, out io.Writer, e
 			owner, group := utils.GetOwnerAndGroupNames(e.path, e.info)
 			owner = utils.Colorize(fmt.Sprintf("%-*s", maxUser, owner), utils.ColorBrightYellow)
 			group = utils.Colorize(fmt.Sprintf("%-*s", maxGroup, group), utils.ColorBrightYellow)
+			ctime := utils.GetCreationTime(e.path, e.info)
+			createdTime := utils.Colorize(formatTime(ctime), utils.ColorBrightCyan)
 			modTime := utils.Colorize(formatTime(e.info.ModTime()), utils.ColorBrightBlue)
 
 			icon := ""
@@ -535,8 +538,8 @@ func (c *LsCommand) Execute(ctx context.Context, args []string, out io.Writer, e
 			}
 			name := colorName(e)
 
-			fmt.Fprintf(out, "%s  %s  %s  %s  %s  %s %s\n",
-				perms, size, owner, group, modTime, icon, name)
+			fmt.Fprintf(out, "%s  %s  %s  %s  %s  %s  %s %s\n",
+				perms, size, owner, group, createdTime, modTime, icon, name)
 		}
 	} else if opts.OnePerLine {
 		for _, e := range entries {

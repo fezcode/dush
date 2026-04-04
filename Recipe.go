@@ -4,10 +4,29 @@ package bake_recipe
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
+	"strings"
+	"time"
 
 	"github.com/fezcode/gobake"
 )
+
+func gitCommit() string {
+	out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		return "unknown"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func buildLdflags(version string) string {
+	commit := gitCommit()
+	date := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	pkg := "dush/cmd/dush/buildinfo"
+	return fmt.Sprintf("-X main.Version=%s -X %s.Version=%s -X %s.Commit=%s -X %s.BuildDate=%s",
+		version, pkg, version, pkg, commit, pkg, date)
+}
 
 func Run(bake *gobake.Engine) error {
 	if err := bake.LoadRecipeInfo("recipe.piml"); err != nil {
@@ -22,7 +41,7 @@ func Run(bake *gobake.Engine) error {
 			return err
 		}
 
-		ldflags := fmt.Sprintf("-X main.Version=%s", bake.Info.Version)
+		ldflags := buildLdflags(bake.Info.Version)
 
 		// Find apps in cmd/
 		entries, _ := os.ReadDir("cmd")
@@ -73,7 +92,7 @@ func Run(bake *gobake.Engine) error {
 			return err
 		}
 
-		ldflags := fmt.Sprintf("-X main.Version=%s", bake.Info.Version)
+		ldflags := buildLdflags(bake.Info.Version)
 
 		// Find apps in cmd/
 		entries, _ := os.ReadDir("cmd")

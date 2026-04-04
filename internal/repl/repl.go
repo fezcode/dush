@@ -29,6 +29,16 @@ type lineEditor struct {
 	prompt string
 	line   []rune
 	pos    int
+	out    io.Writer
+
+	// Tab completion state — tracks consecutive tabs for list/cycle behavior
+	lastTabLine string   // line content on previous tab press
+	lastTabPos  int      // cursor position on previous tab press
+	tabMatches  []string // cached matches from first tab
+	tabIndex    int      // cycle index (-1 = common prefix shown, 0+ = cycling)
+	tabPrev     string   // prefix before the completed arg
+	tabAfter    string   // suffix after the cursor
+	tabQuoted   bool     // whether the arg was quoted
 }
 
 type terminalIO struct {
@@ -36,7 +46,22 @@ type terminalIO struct {
 	io.Writer
 }
 
+func (le *lineEditor) resetTabState() {
+	le.lastTabLine = ""
+	le.lastTabPos = 0
+	le.tabMatches = nil
+	le.tabIndex = -1
+}
+
 func (le *lineEditor) autoComplete(line string, pos int) (string, int, bool) {
+	// Check if this is a consecutive tab press (same line as last tab result)
+	if le.lastTabLine == line && le.lastTabPos == pos && len(le.tabMatches) > 1 {
+		return le.cycleCompletion()
+	}
+
+	// Fresh completion — reset state
+	le.resetTabState()
+
 	before := line[:pos]
 	after := line[pos:]
 
@@ -74,38 +99,36 @@ func (le *lineEditor) autoComplete(line string, pos int) (string, int, bool) {
 			return matches[0] + " " + after, len(matches[0]) + 1, true
 		}
 
-		// Multiple matches: find common prefix
-		common := matches[0]
-		for _, m := range matches[1:] {
-			for i := 0; i < len(common) && i < len(m); i++ {
-				if common[i] != m[i] {
-					common = common[:i]
-					break
-				}
-			}
-			if len(common) == 0 {
-				break
-			}
+		// Multiple: complete to common prefix, cache for cycling
+		common := commonPrefix(matches)
+
+		// Cache cycle state (command matches are plain strings, no quoting needed)
+		le.tabPrev = ""
+		le.tabAfter = after
+		le.tabQuoted = false
+		le.tabIndex = -1
+		// Store full completions for cycling
+		le.tabMatches = make([]string, len(matches))
+		for i, m := range matches {
+			le.tabMatches[i] = m + " "
 		}
-		return common + after, len(common), true
+
+		result := common + after
+		le.lastTabLine = result
+		le.lastTabPos = len(common)
+		return result, len(common), true
 	}
 
-	// File path completion
-	lastField := ""
-	if strings.HasSuffix(before, " ") {
-		// New argument starting
-		lastField = ""
-	} else {
-		lastField = fields[len(fields)-1]
-	}
+	// File path completion — extract last argument respecting quotes
+	rawArg, argStart, quoted := extractLastArg(before)
 
 	dir := "."
-	prefix := lastField
-	if lastField != "" {
-		dir = filepath.Dir(lastField)
-		prefix = filepath.Base(lastField)
-		if strings.HasSuffix(lastField, string(filepath.Separator)) || strings.HasSuffix(lastField, "/") {
-			dir = lastField
+	prefix := rawArg
+	if rawArg != "" {
+		dir = filepath.Dir(rawArg)
+		prefix = filepath.Base(rawArg)
+		if strings.HasSuffix(rawArg, string(filepath.Separator)) || strings.HasSuffix(rawArg, "/") {
+			dir = rawArg
 			prefix = ""
 		}
 	}
@@ -138,28 +161,146 @@ func (le *lineEditor) autoComplete(line string, pos int) (string, int, bool) {
 
 	sort.Strings(matches)
 
+	prev := before[:argStart]
+
 	if len(matches) == 1 {
 		completed := filepath.Join(dir, matches[0])
-		// Reconstruct the line
-		prev := before[:len(before)-len(lastField)]
-		newLine := prev + completed + after
-		return newLine, len(prev + completed), true
+		formatted := quoteIfNeeded(completed, quoted)
+		newLine := prev + formatted + after
+		return newLine, len(prev+formatted), true
 	}
 
-	// Multiple matches: find common prefix
-	common := matches[0]
-	for _, m := range matches[1:] {
-		for i := 0; i < len(common) && i < len(m); i++ {
-			if common[i] != m[i] {
+	// Multiple matches: complete to common prefix, cache for cycling
+	common := commonPrefix(matches)
+	completed := filepath.Join(dir, common)
+	formatted := quoteIfNeeded(completed, quoted)
+
+	// Cache cycle state
+	le.tabPrev = prev
+	le.tabAfter = after
+	le.tabQuoted = quoted
+	le.tabIndex = -1
+	le.tabMatches = make([]string, len(matches))
+	for i, m := range matches {
+		le.tabMatches[i] = quoteIfNeeded(filepath.Join(dir, m), quoted)
+	}
+
+	result := prev + formatted + after
+	le.lastTabLine = result
+	le.lastTabPos = len(prev + formatted)
+	return result, len(prev + formatted), true
+}
+
+func (le *lineEditor) cycleCompletion() (string, int, bool) {
+	le.tabIndex++
+	if le.tabIndex >= len(le.tabMatches) {
+		le.tabIndex = 0
+	}
+
+	choice := le.tabMatches[le.tabIndex]
+	result := le.tabPrev + choice + le.tabAfter
+	newPos := len(le.tabPrev + choice)
+
+	le.lastTabLine = result
+	le.lastTabPos = newPos
+	return result, newPos, true
+}
+
+func commonPrefix(strs []string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	common := strs[0]
+	for _, s := range strs[1:] {
+		for i := 0; i < len(common) && i < len(s); i++ {
+			if common[i] != s[i] {
 				common = common[:i]
 				break
 			}
 		}
+		if len(s) < len(common) {
+			common = common[:len(s)]
+		}
+		if len(common) == 0 {
+			break
+		}
+	}
+	return common
+}
+
+// extractLastArg extracts the last argument from the line, respecting quotes.
+// Returns the raw (unquoted) argument value, its start position in the line,
+// and whether it was inside quotes.
+func extractLastArg(before string) (arg string, start int, quoted bool) {
+	// Scan backwards to find where the last argument starts
+	i := len(before) - 1
+
+	// If trailing space with no open quote, it's a new empty argument
+	if i >= 0 && before[i] == ' ' {
+		return "", len(before), false
 	}
 
-	completed := filepath.Join(dir, common)
-	prev := before[:len(before)-len(lastField)]
-	return prev + completed + after, len(prev + completed), true
+	// Check if we're inside an open quote
+	inQuote := false
+	quoteStart := -1
+	for j := 0; j < len(before); j++ {
+		if before[j] == '"' {
+			if inQuote {
+				inQuote = false
+			} else {
+				inQuote = true
+				quoteStart = j
+			}
+		}
+	}
+
+	if inQuote && quoteStart >= 0 {
+		// We're inside an unclosed quote — the arg is everything after the quote char
+		return before[quoteStart+1:], quoteStart, true
+	}
+
+	// Not in a quote — scan backwards to the last unquoted space
+	for i >= 0 {
+		if before[i] == ' ' {
+			break
+		}
+		// If we hit a closing quote, find its opening quote
+		if before[i] == '"' {
+			j := i - 1
+			for j >= 0 && before[j] != '"' {
+				j--
+			}
+			if j >= 0 {
+				// Found a complete quoted arg: strip the quotes, return inner value
+				return before[j+1 : i], j, true
+			}
+		}
+		i--
+	}
+
+	raw := before[i+1:]
+	return raw, i + 1, false
+}
+
+// quoteIfNeeded wraps a completed path in double quotes if it contains spaces.
+// If the arg was already quoted (open quote), it keeps the quote style and closes it
+// only for single-match completions (trailing entries handled by caller).
+func quoteIfNeeded(completed string, alreadyQuoted bool) string {
+	if alreadyQuoted {
+		// Caller started with a quote — keep content unquoted (the open quote is in prev)
+		// Add closing quote only if this is a final completion (not a dir prefix)
+		if strings.HasSuffix(completed, string(filepath.Separator)) || strings.HasSuffix(completed, "/") {
+			return "\"" + completed
+		}
+		return "\"" + completed + "\""
+	}
+	if strings.Contains(completed, " ") {
+		if strings.HasSuffix(completed, string(filepath.Separator)) || strings.HasSuffix(completed, "/") {
+			return "\"" + completed
+		}
+		return "\"" + completed + "\""
+	}
+	return completed
 }
 
 // Start starts the Read-Eval-Print Loop.
