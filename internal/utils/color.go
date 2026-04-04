@@ -26,6 +26,24 @@ const (
 	ColorBrightWhite   = "\033[97m"
 
 	ColorReset = "\033[0m" // Resets all attributes to their default state
+
+	BgBlack   = "\033[40m"
+	BgRed     = "\033[41m"
+	BgGreen   = "\033[42m"
+	BgYellow  = "\033[43m"
+	BgBlue    = "\033[44m"
+	BgMagenta = "\033[45m"
+	BgCyan    = "\033[46m"
+	BgWhite   = "\033[47m"
+
+	BgBrightBlack   = "\033[100m"
+	BgBrightRed     = "\033[101m"
+	BgBrightGreen   = "\033[102m"
+	BgBrightYellow  = "\033[103m"
+	BgBrightBlue    = "\033[104m"
+	BgBrightMagenta = "\033[105m"
+	BgBrightCyan    = "\033[106m"
+	BgBrightWhite   = "\033[107m"
 )
 
 // ANSI escape codes for text styles
