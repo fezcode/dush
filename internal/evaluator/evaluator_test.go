@@ -4,6 +4,7 @@ import (
 	"dush/internal/evaluator/object"
 	"dush/internal/parser/lexer"
 	"dush/internal/parser/parser"
+	"fmt"
 	"testing"
 )
 
@@ -67,6 +68,24 @@ func TestEvalBooleanExpression(t *testing.T) {
 	}
 }
 
+func TestBangOperator(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"!true", false},
+		{"!false", true},
+		{"!5", false},
+		{"!!true", true},
+		{"!!false", false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
 func TestIfElseExpressions(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -90,6 +109,12 @@ func TestIfElseExpressions(t *testing.T) {
 			testNullObject(t, evaluated)
 		}
 	}
+}
+
+func TestNestedIfElse(t *testing.T) {
+	input := `if (true) { if (false) { 1 } else { 2 } } else { 3 }`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 2)
 }
 
 func TestProcDeclarations(t *testing.T) {
@@ -161,6 +186,29 @@ func TestModuloOperator(t *testing.T) {
 	}
 }
 
+func TestStringExpressions(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`"hello"`, "hello"},
+		{`'raw string'`, "raw string"},
+		{`"hello" + " " + "world"`, "hello world"},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		strObj, ok := evaluated.(*object.String)
+		if !ok {
+			t.Errorf("input %q: expected String, got %T (%+v)", tt.input, evaluated, evaluated)
+			continue
+		}
+		if strObj.Value != tt.expected {
+			t.Errorf("input %q: expected %q, got %q", tt.input, tt.expected, strObj.Value)
+		}
+	}
+}
+
 func TestStringComparison(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -186,8 +234,13 @@ func TestStringBuiltinFunctions(t *testing.T) {
 		expected interface{}
 	}{
 		{`len("hello")`, 5},
+		{`len("")`, 0},
 		{`to_upper("hello")`, "HELLO"},
+		{`to_lower("HELLO")`, "hello"},
+		{`trim("  hello  ")`, "hello"},
 		{`replace("hello world", "world", "dush")`, "hello dush"},
+		{`contains("hello world", "world")`, true},
+		{`contains("hello", "xyz")`, false},
 	}
 
 	for _, tt := range tests {
@@ -195,6 +248,8 @@ func TestStringBuiltinFunctions(t *testing.T) {
 		switch expected := tt.expected.(type) {
 		case int:
 			testIntegerObject(t, evaluated, int64(expected))
+		case bool:
+			testBooleanObject(t, evaluated, expected)
 		case string:
 			errObj, ok := evaluated.(*object.Error)
 			if ok {
@@ -258,11 +313,29 @@ func TestConstImmutability(t *testing.T) {
 	}
 }
 
+func TestConstValue(t *testing.T) {
+	input := "const @PI = 3\n@PI"
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 3)
+}
+
 func TestPubExport(t *testing.T) {
 	input := `pub @KEY = "abc123"`
 	evaluated := testEval(input)
 	if evaluated != nil && evaluated.Type() == object.ERROR_OBJ {
 		t.Fatalf("unexpected error: %s", evaluated.Inspect())
+	}
+}
+
+func TestPubConstExport(t *testing.T) {
+	input := "pub const @VER = \"1.0\"\n@VER"
+	evaluated := testEval(input)
+	strObj, ok := evaluated.(*object.String)
+	if !ok {
+		t.Fatalf("expected String, got %T", evaluated)
+	}
+	if strObj.Value != "1.0" {
+		t.Errorf("expected '1.0', got %q", strObj.Value)
 	}
 }
 
@@ -275,6 +348,18 @@ func TestStringInterpolation(t *testing.T) {
 		if isErr {
 			t.Fatalf("got error: %s", errObj.Message)
 		}
+		t.Fatalf("expected String, got %T (%+v)", evaluated, evaluated)
+	}
+	if strObj.Value != "hello world" {
+		t.Errorf("expected %q, got %q", "hello world", strObj.Value)
+	}
+}
+
+func TestStringInterpolationMultipleVars(t *testing.T) {
+	input := "@first = \"hello\"\n@second = \"world\"\n\"@first @second\""
+	evaluated := testEval(input)
+	strObj, ok := evaluated.(*object.String)
+	if !ok {
 		t.Fatalf("expected String, got %T (%+v)", evaluated, evaluated)
 	}
 	if strObj.Value != "hello world" {
@@ -329,6 +414,198 @@ func TestMethodLen(t *testing.T) {
 	testIntegerObject(t, evaluated, 5)
 }
 
+func TestMethodContains(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`@x = "hello world"; @x.contains("world")`, true},
+		{`@x = "hello world"; @x.contains("xyz")`, false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestMethodStartsWith(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`@x = "hello world"; @x.starts_with("hello")`, true},
+		{`@x = "hello world"; @x.starts_with("world")`, false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestMethodEndsWith(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`@x = "hello world"; @x.ends_with("world")`, true},
+		{`@x = "hello world"; @x.ends_with("hello")`, false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestMethodSplit(t *testing.T) {
+	input := `@x = "a,b,c"; @x.split(",")`
+	evaluated := testEval(input)
+	arr, ok := evaluated.(*object.Array)
+	if !ok {
+		t.Fatalf("expected Array, got %T", evaluated)
+	}
+	if len(arr.Elements) != 3 {
+		t.Fatalf("expected 3 elements, got %d", len(arr.Elements))
+	}
+	expected := []string{"a", "b", "c"}
+	for i, exp := range expected {
+		strObj := arr.Elements[i].(*object.String)
+		if strObj.Value != exp {
+			t.Errorf("element %d: expected %q, got %q", i, exp, strObj.Value)
+		}
+	}
+}
+
+func TestMethodReplaceAll(t *testing.T) {
+	input := `@x = "aabaa"; @x.replace_all("a", "x")`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "xxbxx" {
+		t.Errorf("expected 'xxbxx', got %q", strObj.Value)
+	}
+}
+
+func TestMethodTrimStart(t *testing.T) {
+	input := `@x = "  hello  "; @x.trim_start()`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "hello  " {
+		t.Errorf("expected 'hello  ', got %q", strObj.Value)
+	}
+}
+
+func TestMethodTrimEnd(t *testing.T) {
+	input := `@x = "  hello  "; @x.trim_end()`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "  hello" {
+		t.Errorf("expected '  hello', got %q", strObj.Value)
+	}
+}
+
+func TestMethodSlice(t *testing.T) {
+	input := `@x = "hello"; @x.slice(1, 4)`
+	evaluated := testEval(input)
+	strObj, ok := evaluated.(*object.String)
+	if !ok {
+		errObj, isErr := evaluated.(*object.Error)
+		if isErr {
+			t.Fatalf("error: %s", errObj.Message)
+		}
+		t.Fatalf("expected String, got %T", evaluated)
+	}
+	if strObj.Value != "ell" {
+		t.Errorf("expected 'ell', got %q", strObj.Value)
+	}
+}
+
+func TestMethodOr(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`@x = "hello"; @x.or("default")`, "hello"},
+		{`@x = ""; @x.or("default")`, "default"},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		strObj := evaluated.(*object.String)
+		if strObj.Value != tt.expected {
+			t.Errorf("input %q: expected %q, got %q", tt.input, tt.expected, strObj.Value)
+		}
+	}
+}
+
+func TestMethodToString(t *testing.T) {
+	input := `@x = 42; @x.to_string()`
+	evaluated := testEval(input)
+	strObj, ok := evaluated.(*object.String)
+	if !ok {
+		t.Fatalf("expected String, got %T", evaluated)
+	}
+	if strObj.Value != "42" {
+		t.Errorf("expected '42', got %q", strObj.Value)
+	}
+}
+
+func TestMethodAbs(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{`@x = -5; @x.abs()`, 5},
+		{`@x = 5; @x.abs()`, 5},
+		{`@x = 0; @x.abs()`, 0},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testIntegerObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestArrayMethodLen(t *testing.T) {
+	input := "let @arr = split(\"a,b,c\", \",\")\n@arr.len()"
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 3)
+}
+
+func TestArrayMethodJoin(t *testing.T) {
+	input := `let @arr = split("a,b,c", ","); @arr.join("-")`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "a-b-c" {
+		t.Errorf("expected 'a-b-c', got %q", strObj.Value)
+	}
+}
+
+func TestArrayMethodContains(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"let @arr = split(\"a,b,c\", \",\")\n@arr.contains(\"b\")", true},
+		{"let @arr = split(\"a,b,c\", \",\")\n@arr.contains(\"z\")", false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestMethodChaining(t *testing.T) {
+	input := `@x = "  HELLO  "; @x.trim().lower()`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "hello" {
+		t.Errorf("expected 'hello', got %q", strObj.Value)
+	}
+}
+
 func TestShellVarsReadOnly(t *testing.T) {
 	input := `@LAST_STATUS = 99`
 	evaluated := testEval(input)
@@ -353,10 +630,36 @@ func TestProcLiteral(t *testing.T) {
 	testIntegerObject(t, evaluated, 7)
 }
 
+func TestProcRecursion(t *testing.T) {
+	input := `proc factorial(@n) {
+		if (@n < 2) { return 1 }
+		return @n * factorial(@n - 1)
+	}
+	factorial(5)`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 120)
+}
+
+func TestProcClosure(t *testing.T) {
+	input := `proc makeAdder(@n) {
+		return proc(@x) { @x + @n }
+	}
+	let @addFive = makeAdder(5)
+	@addFive(3)`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 8)
+}
+
 func TestLoopWithAtIterator(t *testing.T) {
 	input := "@sum = 0\nloop (@i : 5) { @sum = @sum + @i }\n@sum"
 	evaluated := testEval(input)
 	testIntegerObject(t, evaluated, 10) // 0+1+2+3+4 = 10
+}
+
+func TestLoopWhileStyle(t *testing.T) {
+	input := "@i = 0\n@sum = 0\nloop (@i < 5) { @sum = @sum + @i\n@i = @i + 1 }\n@sum"
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 10)
 }
 
 func TestArrayIteration(t *testing.T) {
@@ -373,6 +676,12 @@ func TestArrayIteration(t *testing.T) {
 
 func TestArrayLen(t *testing.T) {
 	input := `len(split("a,b,c", ","))`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 3)
+}
+
+func TestArrayFromSplit(t *testing.T) {
+	input := "let @arr = split(\"x,y,z\", \",\")\n@arr.len()"
 	evaluated := testEval(input)
 	testIntegerObject(t, evaluated, 3)
 }
@@ -401,6 +710,80 @@ func TestTypeBuiltin(t *testing.T) {
 	}
 }
 
+func TestIntConversion(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{`int(3.7)`, 3},
+		{`int("42")`, 42},
+		{`int(true)`, 1},
+		{`int(false)`, 0},
+		{`int(5)`, 5},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testIntegerObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestFloatConversion(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected float64
+	}{
+		{`float(3)`, 3.0},
+		{`float("3.14")`, 3.14},
+		{`float(2.5)`, 2.5},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		result := evaluated.(*object.Float)
+		if result.Value != tt.expected {
+			t.Errorf("input %q: expected %f, got %f", tt.input, tt.expected, result.Value)
+		}
+	}
+}
+
+func TestSplitFunction(t *testing.T) {
+	input := `split("hello world", " ")`
+	evaluated := testEval(input)
+	arr, ok := evaluated.(*object.Array)
+	if !ok {
+		t.Fatalf("expected Array, got %T", evaluated)
+	}
+	if len(arr.Elements) != 2 {
+		t.Fatalf("expected 2 elements, got %d", len(arr.Elements))
+	}
+}
+
+func TestJoinFunction(t *testing.T) {
+	input := `join(split("a,b,c", ","), " - ")`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "a - b - c" {
+		t.Errorf("expected 'a - b - c', got %q", strObj.Value)
+	}
+}
+
+func TestFormatFunction(t *testing.T) {
+	input := `format("Hello %s, you are %d", "Alice", 30)`
+	evaluated := testEval(input)
+	strObj, ok := evaluated.(*object.String)
+	if !ok {
+		errObj, isErr := evaluated.(*object.Error)
+		if isErr {
+			t.Fatalf("error: %s", errObj.Message)
+		}
+		t.Fatalf("expected String, got %T", evaluated)
+	}
+	if strObj.Value != "Hello Alice, you are 30" {
+		t.Errorf("expected 'Hello Alice, you are 30', got %q", strObj.Value)
+	}
+}
+
 func TestFileBuiltinFunctions(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -415,6 +798,402 @@ func TestFileBuiltinFunctions(t *testing.T) {
 	for _, tt := range tests {
 		evaluated := testEval(tt.input)
 		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+// === Match-Case Tests ===
+
+func TestMatchCaseInteger(t *testing.T) {
+	input := `@x = 2
+match (@x) {
+	case 1 { "one" }
+	case 2 { "two" }
+	case 3 { "three" }
+}`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "two" {
+		t.Errorf("expected 'two', got %q", strObj.Value)
+	}
+}
+
+func TestMatchCaseString(t *testing.T) {
+	input := `@cmd = "stop"
+match (@cmd) {
+	case "start" { 1 }
+	case "stop" { 2 }
+	case "restart" { 3 }
+}`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 2)
+}
+
+func TestMatchCaseDefault(t *testing.T) {
+	input := `@x = 99
+match (@x) {
+	case 1 { "one" }
+	case 2 { "two" }
+	case _ { "unknown" }
+}`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "unknown" {
+		t.Errorf("expected 'unknown', got %q", strObj.Value)
+	}
+}
+
+func TestMatchCaseNoMatch(t *testing.T) {
+	input := `@x = 99
+match (@x) {
+	case 1 { "one" }
+	case 2 { "two" }
+}`
+	evaluated := testEval(input)
+	testNullObject(t, evaluated)
+}
+
+func TestMatchCaseFirstMatchWins(t *testing.T) {
+	input := `@x = 1
+match (@x) {
+	case 1 { "first" }
+	case 1 { "second" }
+}`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "first" {
+		t.Errorf("expected 'first', got %q", strObj.Value)
+	}
+}
+
+func TestMatchCaseBoolean(t *testing.T) {
+	input := `@x = true
+match (@x) {
+	case false { "no" }
+	case true { "yes" }
+}`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "yes" {
+		t.Errorf("expected 'yes', got %q", strObj.Value)
+	}
+}
+
+func TestMatchCaseWithExpression(t *testing.T) {
+	input := `@x = 2 + 3
+match (@x) {
+	case 4 { "four" }
+	case 5 { "five" }
+	case 6 { "six" }
+}`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "five" {
+		t.Errorf("expected 'five', got %q", strObj.Value)
+	}
+}
+
+// === Logical Operators ===
+
+func TestAndOperator(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"true && true", true},
+		{"true && false", false},
+		{"false && true", false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestOrOperator(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"true || false", true},
+		{"false || true", true},
+		{"false || false", false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestAndShortCircuit(t *testing.T) {
+	// If && short-circuits, the second expr (which would error) never evaluates
+	input := "false && @undefined_var_xyz"
+	evaluated := testEval(input)
+	// Should return false, not error
+	testBooleanObject(t, evaluated, false)
+}
+
+func TestOrShortCircuit(t *testing.T) {
+	// If || short-circuits, the second expr never evaluates
+	input := "true || @undefined_var_xyz"
+	evaluated := testEval(input)
+	testBooleanObject(t, evaluated, true)
+}
+
+// === Error Handling ===
+
+func TestErrorUndefinedVariable(t *testing.T) {
+	input := "@nonexistent"
+	evaluated := testEval(input)
+	errObj, ok := evaluated.(*object.Error)
+	if !ok {
+		t.Fatalf("expected Error, got %T (%+v)", evaluated, evaluated)
+	}
+	if errObj.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+}
+
+func TestStringConcatWithInt(t *testing.T) {
+	// dush coerces int + string to string concatenation
+	input := `"count: " + "5"`
+	evaluated := testEval(input)
+	strObj := evaluated.(*object.String)
+	if strObj.Value != "count: 5" {
+		t.Errorf("expected 'count: 5', got %q", strObj.Value)
+	}
+}
+
+func TestErrorDivisionByZero(t *testing.T) {
+	input := `10 / 0`
+	evaluated := testEval(input)
+	_, ok := evaluated.(*object.Error)
+	if !ok {
+		t.Fatalf("expected Error for division by zero, got %T (%+v)", evaluated, evaluated)
+	}
+}
+
+func TestErrorWrongArgCount(t *testing.T) {
+	input := `len("hello", "world")`
+	evaluated := testEval(input)
+	_, ok := evaluated.(*object.Error)
+	if !ok {
+		t.Fatalf("expected Error for wrong arg count, got %T (%+v)", evaluated, evaluated)
+	}
+}
+
+// === Scope Tests ===
+
+func TestClosureScope(t *testing.T) {
+	input := `@x = 10
+proc getX() { return @x }
+@x = 20
+getX()`
+	evaluated := testEval(input)
+	// Closures capture the environment, @x was updated before call
+	testIntegerObject(t, evaluated, 20)
+}
+
+func TestProcLocalScope(t *testing.T) {
+	input := `@x = 10
+proc shadow() {
+	let @x = 99
+	return @x
+}
+shadow()`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 99)
+}
+
+// === Job Manager Unit Tests ===
+
+func TestJobManagerAddAndList(t *testing.T) {
+	jm := &JobManager{
+		jobs:   make(map[int]*Job),
+		nextID: 1,
+	}
+
+	job1 := jm.Add("sleep 10", nil)
+	job2 := jm.Add("ping localhost", nil)
+
+	if job1.ID != 1 {
+		t.Errorf("expected job1 ID=1, got %d", job1.ID)
+	}
+	if job2.ID != 2 {
+		t.Errorf("expected job2 ID=2, got %d", job2.ID)
+	}
+
+	jobs := jm.List()
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(jobs))
+	}
+}
+
+func TestJobManagerGet(t *testing.T) {
+	jm := &JobManager{
+		jobs:   make(map[int]*Job),
+		nextID: 1,
+	}
+
+	job := jm.Add("test cmd", nil)
+	got := jm.Get(job.ID)
+	if got == nil {
+		t.Fatal("expected to get job back")
+	}
+	if got.Command != "test cmd" {
+		t.Errorf("expected 'test cmd', got %q", got.Command)
+	}
+
+	notFound := jm.Get(999)
+	if notFound != nil {
+		t.Error("expected nil for non-existent job")
+	}
+}
+
+func TestJobManagerRemove(t *testing.T) {
+	jm := &JobManager{
+		jobs:   make(map[int]*Job),
+		nextID: 1,
+	}
+
+	job := jm.Add("test", nil)
+	if !jm.Remove(job.ID) {
+		t.Error("expected Remove to return true")
+	}
+	if jm.Remove(job.ID) {
+		t.Error("expected Remove to return false for already-removed job")
+	}
+	if len(jm.List()) != 0 {
+		t.Error("expected empty list after removal")
+	}
+}
+
+func TestJobManagerMarkDone(t *testing.T) {
+	jm := &JobManager{
+		jobs:   make(map[int]*Job),
+		nextID: 1,
+	}
+
+	job := jm.Add("test", nil)
+	if job.Status != JobRunning {
+		t.Errorf("expected JobRunning, got %v", job.Status)
+	}
+
+	jm.MarkDone(job.ID, nil)
+	if job.Status != JobDone {
+		t.Errorf("expected JobDone, got %v", job.Status)
+	}
+
+	// Done channel should be closed
+	select {
+	case <-job.Done:
+		// good
+	default:
+		t.Error("expected Done channel to be closed")
+	}
+}
+
+func TestJobManagerMarkFailed(t *testing.T) {
+	jm := &JobManager{
+		jobs:   make(map[int]*Job),
+		nextID: 1,
+	}
+
+	job := jm.Add("test", nil)
+	jm.MarkDone(job.ID, fmt.Errorf("something broke"))
+
+	if job.Status != JobFailed {
+		t.Errorf("expected JobFailed, got %v", job.Status)
+	}
+	if job.Error == nil {
+		t.Error("expected non-nil error")
+	}
+}
+
+func TestJobManagerCleanup(t *testing.T) {
+	jm := &JobManager{
+		jobs:   make(map[int]*Job),
+		nextID: 1,
+	}
+
+	jm.Add("running", nil)
+	job2 := jm.Add("done", nil)
+	job3 := jm.Add("failed", nil)
+
+	jm.MarkDone(job2.ID, nil)
+	jm.MarkDone(job3.ID, fmt.Errorf("err"))
+
+	removed := jm.Cleanup()
+	if removed != 2 {
+		t.Errorf("expected 2 removed, got %d", removed)
+	}
+
+	remaining := jm.List()
+	if len(remaining) != 1 {
+		t.Errorf("expected 1 remaining, got %d", len(remaining))
+	}
+	if remaining[0].Status != JobRunning {
+		t.Error("remaining job should be running")
+	}
+}
+
+func TestJobManagerKillNoProcess(t *testing.T) {
+	jm := &JobManager{
+		jobs:   make(map[int]*Job),
+		nextID: 1,
+	}
+
+	job := jm.Add("test", nil)
+	err := jm.Kill(job.ID)
+	if err == nil {
+		t.Error("expected error when killing job with no process")
+	}
+}
+
+func TestJobManagerKillNonExistent(t *testing.T) {
+	jm := &JobManager{
+		jobs:   make(map[int]*Job),
+		nextID: 1,
+	}
+
+	err := jm.Kill(999)
+	if err == nil {
+		t.Error("expected error for non-existent job")
+	}
+}
+
+func TestJobStatusString(t *testing.T) {
+	tests := []struct {
+		status   JobStatus
+		expected string
+	}{
+		{JobRunning, "running"},
+		{JobDone, "done"},
+		{JobFailed, "failed"},
+		{JobStatus(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		if tt.status.String() != tt.expected {
+			t.Errorf("status %d: expected %q, got %q", tt.status, tt.expected, tt.status.String())
+		}
+	}
+}
+
+func TestJobListOrdering(t *testing.T) {
+	jm := &JobManager{
+		jobs:   make(map[int]*Job),
+		nextID: 1,
+	}
+
+	jm.Add("first", nil)
+	jm.Add("second", nil)
+	jm.Add("third", nil)
+
+	jobs := jm.List()
+	if jobs[0].Command != "first" || jobs[1].Command != "second" || jobs[2].Command != "third" {
+		t.Error("jobs should be ordered by ID")
 	}
 }
 

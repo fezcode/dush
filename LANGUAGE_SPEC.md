@@ -26,54 +26,126 @@ Bare identifiers (without `@`) in commands are always treated as string literals
 - `echo hello` → prints "hello" (literal string)
 - `echo @name` → prints the value of variable `name`
 
-### Data Types
-- `int`: `@x = 42`
-- `float`: `@pi = 3.14`
-- `string`: `@name = "world"`
-- `bool`: `@flag = true`
-- `array`: from `split()` and other functions
+## 4. Data Types
 
-## 4. Strings
+### Integer
+Whole numbers. Supports standard arithmetic: `+`, `-`, `*`, `/`, `%`.
 
-### Double-quoted strings (interpolation)
-Variables inside double-quoted strings are automatically interpolated:
+```
+@x = 42
+@y = -10
+@z = @x + @y        # 32
+@z = 15 % 4         # 3
+
+// Methods
+@n = -5
+@n.abs()             # 5
+@n.to_string()       # "-5"
+```
+
+### Float
+Decimal numbers. Mixed int/float operations produce floats.
+
+```
+@pi = 3.14
+@x = 1 + 2.5        # 3.5 (int + float = float)
+@y = 7.0 / 2.0      # 3.5
+
+// Methods
+@f = -3.7
+@f.abs()             # 3.7
+@f.to_string()       # "-3.7"
+```
+
+### String
+Double-quoted strings support `@` interpolation. Single-quoted strings are raw.
+
 ```
 @name = "world"
-echo "hello @name"    → hello world
+@greeting = "hello @name"    # "hello world"
+@raw = 'hello @name'         # "hello @name" (literal)
+@concat = "hello" + " " + "world"
 ```
 
-### Single-quoted strings (raw)
-Single-quoted strings have no interpolation:
+Comparison: `==`, `!=`, `<`, `>` (lexicographic).
+
+**Methods:**
+
+| Method | Returns | Description |
+|---|---|---|
+| `.upper()` | String | Uppercase |
+| `.lower()` | String | Lowercase |
+| `.len()` | Integer | Character count |
+| `.trim()` | String | Strip leading/trailing whitespace |
+| `.trim_start()` | String | Strip leading whitespace |
+| `.trim_end()` | String | Strip trailing whitespace |
+| `.contains(s)` | Boolean | Substring check |
+| `.starts_with(s)` | Boolean | Prefix check |
+| `.ends_with(s)` | Boolean | Suffix check |
+| `.replace(old, new)` | String | Replace first occurrence |
+| `.replace_all(old, new)` | String | Replace all occurrences |
+| `.split(sep)` | Array | Split into array |
+| `.slice(start, end)` | String | Substring by index |
+| `.or(default)` | String | Return default if empty |
+| `.to_string()` | String | Identity |
+
+### Boolean
 ```
-echo 'hello @name'    → hello @name
+@flag = true
+@other = false
+@x = 1 < 2          # true
+@y = !@flag          # false
+```
+
+### Array
+Arrays are created by functions like `split()`. They hold ordered elements.
+
+```
+@arr = split("a,b,c", ",")
+@arr.len()                   # 3
+@arr.join(" | ")             # "a | b | c"
+@arr.contains("b")          # true
+
+loop (@item : @arr) {
+    echo @item
+}
+```
+
+**Methods:**
+
+| Method | Returns | Description |
+|---|---|---|
+| `.len()` | Integer | Element count |
+| `.join(sep)` | String | Join elements with separator |
+| `.contains(val)` | Boolean | Membership check |
+
+### Type Conversion
+```
+int(3.7)             # 3
+int("42")            # 42
+int(true)            # 1
+int(false)           # 0
+
+float(3)             # 3.0
+float("3.14")        # 3.14
+
+type(42)             # "INTEGER"
+type("hello")        # "STRING"
+type(true)           # "BOOLEAN"
+type(3.14)           # "FLOAT"
 ```
 
 ## 5. Methods
 
-Variables support method syntax for common operations:
+Variables support method syntax. Methods can be chained:
 
-### String methods
-- `@s.upper()` — uppercase
-- `@s.lower()` — lowercase
-- `@s.len()` — length (returns int)
-- `@s.trim()`, `@s.trim_start()`, `@s.trim_end()` — whitespace trimming
-- `@s.contains("sub")` — substring check (returns bool)
-- `@s.starts_with("pre")`, `@s.ends_with("suf")` — prefix/suffix check
-- `@s.replace("old", "new")` — replace first occurrence
-- `@s.replace_all("old", "new")` — replace all occurrences
-- `@s.split(" ")` — split into array
-- `@s.slice(start, end)` — substring
-- `@s.or("default")` — return default if empty
-- `@s.to_string()` — identity (already a string)
+```
+@s = "  HELLO WORLD  "
+@s.trim().lower()            # "hello world"
+@s.trim().split(" ").join("-")  # "HELLO-WORLD"
+```
 
-### Array methods
-- `@arr.len()` — length
-- `@arr.join(",")` — join elements
-- `@arr.contains("item")` — membership check
-
-### Number methods
-- `@n.abs()` — absolute value
-- `@n.to_string()` — convert to string
+See the per-type method tables in Section 4 for the full list.
 
 ## 6. Control Flow
 
@@ -122,8 +194,58 @@ greet("world")
 - **Declaration:** `proc name(@param1, @param2) { ... }`
 - **Proc literal:** `let @add = proc(@x, @y) { @x + @y }`
 - **Return:** `return @value`
+- **Recursion:** procedures can call themselves
+- **Closures:** inner procs capture the enclosing environment
 
-## 8. Shell Integration
+```
+proc make_counter() {
+    @n = 0
+    return proc() {
+        @n = @n + 1
+        return @n
+    }
+}
+let @count = make_counter()
+@count()    # 1
+@count()    # 2
+```
+
+## 8. Operators
+
+### Arithmetic
+| Operator | Description | Example |
+|---|---|---|
+| `+` | Add / string concat | `2 + 3` → `5` |
+| `-` | Subtract | `10 - 4` → `6` |
+| `*` | Multiply | `3 * 4` → `12` |
+| `/` | Divide | `10 / 3` → `3` |
+| `%` | Modulo | `10 % 3` → `1` |
+
+### Comparison
+| Operator | Description |
+|---|---|
+| `==` | Equal |
+| `!=` | Not equal |
+| `<` | Less than |
+| `>` | Greater than |
+
+### Logical
+| Operator | Description |
+|---|---|
+| `&&` | Logical AND (short-circuit) |
+| `\|\|` | Logical OR (short-circuit) |
+| `!` | Logical NOT (prefix) |
+
+### Shell
+| Operator | Description |
+|---|---|
+| `\|` | Pipe stdout to next command's stdin |
+| `>` | Redirect stdout (truncate) |
+| `>>` | Redirect stdout (append) |
+| `<` | Redirect stdin from file |
+| `&` | Run command in background |
+
+## 9. Shell Integration
 
 ### Commands
 Any bare identifier that is not a keyword or known function is treated as a command:
@@ -131,6 +253,8 @@ Any bare identifier that is not a keyword or known function is treated as a comm
 git status
 ls -la
 echo "hello world"
+atlas.ed file.txt              # dotted command names work
+cd .config                     # dot-prefixed arguments work
 ```
 
 ### Command arguments
@@ -145,6 +269,15 @@ echo "hello world"
 - `||`: run next if previous failed
 - `|`: pipe stdout to next command's stdin
 
+### Background jobs
+```
+sleep 30 &                     # [1] 12345
+jobs                           # list all background jobs
+fg 1                           # wait for job 1 to finish
+killjob 1                      # terminate job 1
+cleanjobs                      # remove finished jobs from list
+```
+
 ### Output capture
 ```
 let @output = save(echo "hello")
@@ -157,7 +290,7 @@ with (@NODE_ENV = "production") {
 }
 ```
 
-## 9. Shell Variables (read-only)
+## 10. Shell Variables (read-only)
 
 These are populated by the shell and cannot be reassigned:
 - `@LAST_STATUS` — exit code of last command
@@ -168,18 +301,62 @@ These are populated by the shell and cannot be reassigned:
 - `@USER_NAME` — current user
 - `@SHELL_VERSION` — dush version string
 
-## 10. Built-in Functions
-- `len(str)` — string/array length
-- `split(str, sep)` — split string into array
-- `replace(str, old, new)` — replace in string
-- `to_upper(str)` — uppercase string
-- `to_lower(str)` — lowercase string
-- `type(val)` — type name as string
-- `save(cmd)` — capture command output
-- `exists(path)` — file/directory exists check
-- `is_dir(path)` — directory check
+## 11. Built-in Functions
 
-## 11. Configuration & Startup
+| Function | Description |
+|---|---|
+| `len(val)` | String or array length |
+| `split(str, sep)` | Split string into array |
+| `join(arr, sep)` | Join array into string |
+| `replace(str, old, new)` | Replace all occurrences |
+| `to_upper(str)` | Uppercase string |
+| `to_lower(str)` | Lowercase string |
+| `trim(str)` | Strip whitespace |
+| `contains(str, sub)` | Substring check |
+| `format(fmt, ...)` | Printf-style formatting |
+| `type(val)` | Type name as string |
+| `int(val)` | Convert to integer |
+| `float(val)` | Convert to float |
+| `save(cmd)` | Capture command output |
+| `exists(path)` | File/directory exists check |
+| `is_dir(path)` | Directory check |
+
+## 12. Built-in Shell Commands
+
+| Command | Description |
+|---|---|
+| `cd [path]` | Change directory |
+| `pwd` | Print working directory |
+| `ls [opts] [path]` | List directory (modern, with icons) |
+| `echo [args...]` | Print arguments |
+| `clear` | Clear screen |
+| `alias name='value'` | Define alias |
+| `unalias name` | Remove alias |
+| `export @VAR = value` | Export variable |
+| `history` | Show command history |
+| `sleep <seconds>` | Sleep |
+| `help` | Show built-in help |
+| `version` | Show version |
+| `jobs` | List background jobs |
+| `fg <id>` | Wait for background job |
+| `killjob <id>` | Kill background job |
+| `cleanjobs` | Remove finished jobs |
+
+### `ls` options
+
+| Flag | Description |
+|---|---|
+| `-l` / `--long` | Long table format with permissions, size, owner, timestamps |
+| `-a` / `--all` | Show hidden (dot) files |
+| `-1` / `--oneline` | One entry per line |
+| `-r` / `--reverse` | Reverse sort order |
+| `-S` / `--sort=size` | Sort by file size |
+| `-t` / `--sort=time` | Sort by modification time |
+| `-X` / `--sort=ext` | Sort by file extension |
+| `--no-header` | Hide table header in long format |
+| `--no-icons` | Hide file type icons |
+
+## 13. Configuration & Startup
 
 All config lives in `~/.dush/`:
 
@@ -192,6 +369,13 @@ All config lives in `~/.dush/`:
 ### Loading Order
 1. `~/.dush/env` — **always loaded** (interactive + scripts). Environment setup, pub vars, prompt config.
 2. `~/.dush/is` — **interactive only**. Aliases, greeting, interactive helpers.
+
+### CLI Flags
+```
+dush --env <path>       # override env file path
+dush --is <path>        # override is file path
+dush --history <path>   # override history file path
+```
 
 ### Prompt Configuration
 Set `@PROMPT_LINE` in `~/.dush/env` to customize the prompt using tokens:
@@ -266,8 +450,11 @@ alias gs='git status'
 echo "Welcome back, @USER_NAME!"
 ```
 
-## 12. Roadmap
-- Pipes & redirection: `ls | grep "go"`, `echo "hello" > file.txt`
+## 14. Roadmap
 - Globbing: `ls *.go`
 - Map type: `@m = {"key": "value"}`
+- Array literals: `@arr = [1, 2, 3]`
+- Index expressions: `@arr[0]`
 - Error handling patterns
+- Signal trapping
+- Here-docs

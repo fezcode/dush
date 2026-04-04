@@ -94,7 +94,7 @@ func (l *Lexer) NextToken() token.Token {
 			literal := string(ch) + string(l.ch)
 			tok = token.Token{Type: token.AND, Literal: literal, PrecededBySpace: hadSpace}
 		} else {
-			tok = newToken(token.ILLEGAL, l.ch)
+			tok = newToken(token.AMPERSAND, l.ch)
 			tok.PrecededBySpace = hadSpace
 		}
 	case '|':

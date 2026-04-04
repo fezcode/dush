@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradients -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#0f0f1a"/>
+    </linearGradient>
+    <linearGradient id="accent-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e94560"/>
+      <stop offset="100%" style="stop-color:#ff2e63"/>
+    </linearGradient>
+    <linearGradient id="glass-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff; stop-opacity:0.1"/>
+      <stop offset="100%" style="stop-color:#ffffff; stop-opacity:0.02"/>
+    </linearGradient>
+    
+    <!-- Effects -->
+    <filter id="neon-glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="10" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Base Rounded Square (Balanced Border Radius) -->
+  <rect width="512" height="512" rx="80" fill="url(#bg-grad)"/>
+  
+  <!-- Subtle Grid Pattern -->
+  <path d="M0 128 H512 M0 256 H512 M0 384 H512 M128 0 V512 M256 0 V512 M384 0 V512" 
+        stroke="white" stroke-width="1" opacity="0.04"/>
+
+  <!-- Terminal "Glass" Layer (Balanced Border Radius) -->
+  <rect x="40" y="40" width="432" height="432" rx="40" fill="url(#glass-grad)" stroke="white" stroke-opacity="0.1" stroke-width="2"/>
+
+  <!-- Dush "Traffic Lights" -->
+  <circle cx="90" cy="90" r="10" fill="#ff5f57"/>
+  <circle cx="125" cy="90" r="10" fill="#ffbd2e"/>
+  <circle cx="160" cy="90" r="10" fill="#28c840"/>
+
+  <!-- Vertically Centered Prompt Sign ($) -->
+  <text x="80" y="278" font-family="'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace" 
+        font-size="110" fill="#a8d8ea" font-weight="bold" filter="url(#neon-glow)">$</text>
+
+  <!-- The Core @ Sigil (Centered) -->
+  <text x="265" y="320" font-family="'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace" 
+        font-size="280" font-weight="bold" fill="url(#accent-grad)" text-anchor="middle" filter="url(#neon-glow)">@</text>
+
+  <!-- "dush" Branding at the Bottom (Instrument Serif Italic Red) -->
+  <text x="256" y="445" font-family="'Instrument Serif', Georgia, serif" 
+        font-size="92" font-style="italic" font-weight="bold" fill="url(#accent-grad)" text-anchor="middle" letter-spacing="2">dush</text>
+
+  <!-- Decorative Accent -->
+  <path d="M440 40 L472 72" stroke="#e94560" stroke-width="4" opacity="0.2"/>
+</svg>

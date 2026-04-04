@@ -37,10 +37,11 @@ const (
 	OR     = "||"
 
 	// Shell Operators
-	PIPE     = "|"
-	REDIRECT = ">" // Same as GT, context matters
-	APPEND   = ">>"
-	INPUT    = "<" // Same as LT
+	PIPE      = "|"
+	REDIRECT  = ">" // Same as GT, context matters
+	APPEND    = ">>"
+	INPUT     = "<" // Same as LT
+	AMPERSAND = "&"
 
 	// Variable sigil
 	AT = "@"

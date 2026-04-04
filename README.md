@@ -25,11 +25,15 @@ proc greet(@who) {
     echo "hey @who!"
 }
 greet("dush")
+
+sleep 30 &                     # background job
+jobs                           # list running jobs
 ```
 
 ## Features
 
 - **`@` variable system** -- unambiguous access everywhere (code, commands, strings)
+- **Data types** -- integers, floats, strings, booleans, arrays
 - **String interpolation** -- `"hello @name"` just works, `'raw @string'` doesn't
 - **Method syntax** -- `@name.upper()`, `@text.split(",")`, `@n.abs()`
 - **`match-case`** -- pattern matching with `case _` wildcard
@@ -38,10 +42,12 @@ greet("dush")
 - **Procedures** -- first-class, closures, recursion
 - **Loops** -- conditional (`loop (@i < 10)`) and iterator (`loop (@x : @items)`)
 - **Command chaining** -- `&&`, `||`, pipes `|`, redirects `>`, `>>`
+- **Background jobs** -- `command &`, `jobs`, `fg`, `killjob`, `cleanjobs`
 - **Output capture** -- `let @out = save(echo "hi")`
 - **Scoped env** -- `with (@NODE_ENV = "prod") { ... }`
 - **String/array/number methods** -- trim, replace, split, join, contains, slice, abs, etc.
 - **Customizable prompt** -- oh-my-zsh style `{tokens}` with ANSI colors, git branch, time
+- **Modern `ls`** -- icons, colors, grid/table layout, human-readable sizes, sorting
 - **Interactive shell** -- history, tab completion, `~/.dush/` config
 - **Cross-platform** -- Windows, Linux, macOS
 
@@ -94,7 +100,132 @@ echo "welcome to @lang"        # welcome to dush
 echo 'no @interpolation'       # no @interpolation
 ```
 
-### Methods
+## Data Types
+
+### Integer
+
+Whole numbers, positive or negative.
+
+```bash
+@x = 42
+@y = -10
+@z = @x + @y                  # 32
+@z = @x * 2                   # 84
+@z = @x / 5                   # 8
+@z = @x % 10                  # 2
+
+@n = -5
+@n.abs()                       # 5
+@n.to_string()                 # "-5"
+```
+
+### Float
+
+Decimal numbers. Mixed int/float arithmetic produces floats.
+
+```bash
+@pi = 3.14
+@radius = 5
+@area = @pi * @radius * @radius   # 78.5
+
+@x = 7.0 / 2.0                # 3.5
+@y = 1 + 2.5                  # 3.5 (int + float = float)
+
+@f = -3.7
+@f.abs()                       # 3.7
+@f.to_string()                 # "-3.7"
+```
+
+### String
+
+Double-quoted strings support `@` interpolation. Single-quoted strings are raw.
+
+```bash
+@name = "world"
+@greeting = "hello @name"      # "hello world"
+@raw = 'hello @name'           # "hello @name" (no interpolation)
+@empty = ""
+
+# Concatenation
+@full = "hello" + " " + "world"
+
+# Comparison
+"abc" == "abc"                 # true
+"abc" < "def"                  # true (lexicographic)
+```
+
+**String methods:**
+
+| Method | Returns | Example |
+|---|---|---|
+| `.upper()` | String | `"hello".upper()` → `"HELLO"` |
+| `.lower()` | String | `"HELLO".lower()` → `"hello"` |
+| `.len()` | Integer | `"hello".len()` → `5` |
+| `.trim()` | String | `"  hi  ".trim()` → `"hi"` |
+| `.trim_start()` | String | `"  hi  ".trim_start()` → `"hi  "` |
+| `.trim_end()` | String | `"  hi  ".trim_end()` → `"  hi"` |
+| `.contains(s)` | Boolean | `"hello".contains("ell")` → `true` |
+| `.starts_with(s)` | Boolean | `"hello".starts_with("he")` → `true` |
+| `.ends_with(s)` | Boolean | `"hello".ends_with("lo")` → `true` |
+| `.replace(old, new)` | String | `"hello".replace("l", "r")` → `"herlo"` |
+| `.replace_all(old, new)` | String | `"hello".replace_all("l", "r")` → `"herro"` |
+| `.split(sep)` | Array | `"a,b,c".split(",")` → `["a","b","c"]` |
+| `.slice(start, end)` | String | `"hello".slice(1, 4)` → `"ell"` |
+| `.or(default)` | String | `"".or("fallback")` → `"fallback"` |
+| `.to_string()` | String | identity |
+
+### Boolean
+
+```bash
+@flag = true
+@other = false
+
+@x = 1 < 2                    # true
+@y = 10 == 10                  # true
+@z = !@flag                    # false
+```
+
+### Array
+
+Arrays are created by functions like `split()`. They hold ordered elements.
+
+```bash
+@arr = split("a,b,c", ",")    # ["a", "b", "c"]
+@arr.len()                     # 3
+@arr.join(" | ")               # "a | b | c"
+@arr.contains("b")            # true
+
+# Iterate
+loop (@item : @arr) {
+    echo @item
+}
+```
+
+**Array methods:**
+
+| Method | Returns | Example |
+|---|---|---|
+| `.len()` | Integer | `@arr.len()` → `3` |
+| `.join(sep)` | String | `@arr.join(",")` → `"a,b,c"` |
+| `.contains(val)` | Boolean | `@arr.contains("b")` → `true` |
+
+### Type Conversion
+
+```bash
+int(3.7)                       # 3
+int("42")                      # 42
+int(true)                      # 1
+
+float(3)                       # 3.0
+float("3.14")                  # 3.14
+
+type(42)                       # "INTEGER"
+type("hello")                  # "STRING"
+type(true)                     # "BOOLEAN"
+type(3.14)                     # "FLOAT"
+```
+
+## Methods
 
 ```bash
 @s = "hello world"
@@ -111,6 +242,10 @@ echo 'no @interpolation'       # no @interpolation
 
 @n = -42
 @n.abs()                       # 42
+
+# Chaining
+@s = "  HELLO  "
+@s.trim().lower()              # "hello"
 ```
 
 ### Shell Variables (read-only)
@@ -190,9 +325,21 @@ let @add5 = make_adder(5)
 git status
 ls -la
 
+# Dotted command names work
+atlas.ed file.txt
+node.exe script.js
+
+# Dot-prefixed arguments work
+cd .config
+ls .hidden
+
 # Chaining
 echo "a" && echo "b"          # both run
 echo "a" || echo "b"          # only first runs
+
+# Pipes and redirects
+ls | grep go
+echo "log" >> output.txt
 
 # Output capture
 let @files = save(ls)
@@ -202,6 +349,68 @@ with (@NODE_ENV = "production") {
     echo @NODE_ENV
 }
 ```
+
+### Background Jobs
+
+Run any command in the background with `&`:
+
+```bash
+sleep 30 &                     # [1] 12345
+ping localhost &               # [2] 12346
+ls | grep go &                 # pipes work too
+```
+
+**Job management builtins:**
+
+| Command | Description |
+|---|---|
+| `jobs` | List all background jobs with status and PID |
+| `fg <id>` | Wait for a background job to finish (bring to foreground) |
+| `killjob <id>` | Kill a running background job |
+| `cleanjobs` | Remove finished jobs from the list |
+
+```bash
+sleep 60 &                     # [1] 54321
+jobs                           # [1]  running  PID 54321  sleep 60
+killjob 1                      # kills the job
+cleanjobs                      # removes finished entries
+```
+
+## Modern `ls`
+
+Dush ships with a built-in `ls` that's colorful, icon-rich, and modern (inspired by [eza](https://github.com/eza-community/eza)).
+
+```
+ls                             # grid view with icons and colors
+ls -l                          # long format with header, perms, size, owner
+ls -la                         # include hidden (dot) files
+ls -lS                         # long format, sorted by size
+ls -lt                         # long format, sorted by time
+```
+
+**Features:**
+- File-type icons (folders, Go, Python, Rust, JS, archives, images, etc.)
+- Colored file names by type (directories bold blue, executables green, etc.)
+- Colored permissions (`r` yellow, `w` red, `x` green)
+- Human-readable file sizes (`1.2M`, `340K`, `5.1G`)
+- Table header in long format
+- Grid layout that adapts to terminal width
+- Sorting by name (default), size (`-S`), time (`-t`), or extension (`-X`)
+- Reverse sort (`-r`)
+
+**Flags:**
+
+| Flag | Long | Description |
+|---|---|---|
+| `-l` | `--long` | Long table format with details |
+| `-a` | `--all` | Show hidden (dot) files |
+| `-1` | `--oneline` | One entry per line |
+| `-r` | `--reverse` | Reverse sort order |
+| `-S` | `--sort=size` | Sort by file size |
+| `-t` | `--sort=time` | Sort by modification time |
+| `-X` | `--sort=ext` | Sort by file extension |
+| | `--no-header` | Hide the table header |
+| | `--no-icons` | Hide file type icons |
 
 ## Project Structure
 
@@ -213,13 +422,13 @@ dush/
     ports/         # cross-platform port scanner
   internal/
     parser/        # lexer, tokens, AST, Pratt parser
-    evaluator/     # tree-walking evaluator, environment, methods
+    evaluator/     # tree-walking evaluator, environment, methods, jobs
     prompt/        # customizable prompt renderer with ANSI colors
-    builtins/      # built-in shell commands (cd, pwd, help)
+    builtins/      # built-in shell commands (cd, ls, pwd, jobs, fg, etc.)
     repl/          # interactive shell with history + tab completion
     app/           # global app state
     config/        # defaults and runtime config
-    utils/         # utilities (history, display)
+    utils/         # utilities (history, colors, display)
   examples/
     showcase.dush  # comprehensive language demo
   Recipe.go        # gobake build recipe

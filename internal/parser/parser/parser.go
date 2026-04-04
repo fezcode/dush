@@ -268,6 +268,15 @@ func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 
 	stmt.Expression = p.parseExpression(LOWEST)
 
+	// Background operator: command &
+	if p.peekTokenIs(token.AMPERSAND) {
+		p.nextToken()
+		stmt.Expression = &ast.BackgroundExpression{
+			Token:      p.curToken,
+			Expression: stmt.Expression,
+		}
+	}
+
 	// Optional semicolon
 	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()
@@ -380,7 +389,7 @@ func (p *Parser) parseCommandExpression(ident *ast.Identifier) ast.Expression {
 func isCommandTerminator(t token.TokenType) bool {
 	switch t {
 	case token.SEMICOLON, token.EOF,
-		token.AND, token.OR,
+		token.AND, token.OR, token.AMPERSAND,
 		token.PIPE, token.GT, token.APPEND, token.LT,
 		token.RPAREN, token.RBRACE:
 		return true

@@ -499,3 +499,15 @@ func (we *WithExpression) String() string {
 	out.WriteString(we.Body.String())
 	return out.String()
 }
+
+// BackgroundExpression: command &
+type BackgroundExpression struct {
+	Token      token.Token // The '&' token
+	Expression Expression  // The command to run in background
+}
+
+func (be *BackgroundExpression) expressionNode()      {}
+func (be *BackgroundExpression) TokenLiteral() string { return be.Token.Literal }
+func (be *BackgroundExpression) String() string {
+	return be.Expression.String() + " &"
+}

@@ -276,3 +276,272 @@ func TestSingleQuoteString(t *testing.T) {
 		t.Errorf("expected 'hello @world', got %q", tok.Literal)
 	}
 }
+
+func TestAmpersandToken(t *testing.T) {
+	input := `sleep 10 &`
+	l := New(input)
+
+	tok := l.NextToken() // sleep
+	if tok.Type != token.IDENT || tok.Literal != "sleep" {
+		t.Errorf("expected IDENT 'sleep', got %s %q", tok.Type, tok.Literal)
+	}
+
+	tok = l.NextToken() // 10
+	if tok.Type != token.INT || tok.Literal != "10" {
+		t.Errorf("expected INT '10', got %s %q", tok.Type, tok.Literal)
+	}
+
+	tok = l.NextToken() // &
+	if tok.Type != token.AMPERSAND || tok.Literal != "&" {
+		t.Errorf("expected AMPERSAND '&', got %s %q", tok.Type, tok.Literal)
+	}
+}
+
+func TestAmpersandVsAnd(t *testing.T) {
+	input := `a & b && c`
+	l := New(input)
+
+	l.NextToken() // a
+	tok := l.NextToken()
+	if tok.Type != token.AMPERSAND {
+		t.Errorf("expected AMPERSAND for single &, got %s", tok.Type)
+	}
+
+	l.NextToken() // b
+	tok = l.NextToken()
+	if tok.Type != token.AND {
+		t.Errorf("expected AND for &&, got %s", tok.Type)
+	}
+}
+
+func TestMatchCaseTokens(t *testing.T) {
+	input := `match case`
+	l := New(input)
+
+	tok := l.NextToken()
+	if tok.Type != token.MATCH {
+		t.Errorf("expected MATCH, got %s", tok.Type)
+	}
+
+	tok = l.NextToken()
+	if tok.Type != token.CASE {
+		t.Errorf("expected CASE, got %s", tok.Type)
+	}
+}
+
+func TestDotToken(t *testing.T) {
+	input := `file.txt`
+	l := New(input)
+
+	tok := l.NextToken() // file
+	if tok.Type != token.IDENT || tok.Literal != "file" {
+		t.Errorf("expected IDENT 'file', got %s %q", tok.Type, tok.Literal)
+	}
+
+	tok = l.NextToken() // .
+	if tok.Type != token.DOT || tok.Literal != "." {
+		t.Errorf("expected DOT '.', got %s %q", tok.Type, tok.Literal)
+	}
+	if tok.PrecededBySpace {
+		t.Error("DOT after 'file' should not be preceded by space")
+	}
+
+	tok = l.NextToken() // txt
+	if tok.Type != token.IDENT || tok.Literal != "txt" {
+		t.Errorf("expected IDENT 'txt', got %s %q", tok.Type, tok.Literal)
+	}
+}
+
+func TestDotWithSpace(t *testing.T) {
+	input := `cd .config`
+	l := New(input)
+
+	l.NextToken() // cd
+	tok := l.NextToken() // .
+	if tok.Type != token.DOT {
+		t.Errorf("expected DOT, got %s", tok.Type)
+	}
+	if !tok.PrecededBySpace {
+		t.Error("DOT after 'cd ' should be preceded by space")
+	}
+
+	tok = l.NextToken() // config
+	if tok.Type != token.IDENT || tok.Literal != "config" {
+		t.Errorf("expected IDENT 'config', got %s %q", tok.Type, tok.Literal)
+	}
+	if tok.PrecededBySpace {
+		t.Error("'config' should not be preceded by space (attached to dot)")
+	}
+}
+
+func TestFloatLiteral(t *testing.T) {
+	input := `3.14`
+	l := New(input)
+
+	tok := l.NextToken()
+	if tok.Type != token.FLOAT {
+		t.Errorf("expected FLOAT, got %s", tok.Type)
+	}
+	if tok.Literal != "3.14" {
+		t.Errorf("expected '3.14', got %q", tok.Literal)
+	}
+}
+
+func TestShellOperators(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []token.TokenType
+	}{
+		{"|", []token.TokenType{token.PIPE}},
+		{">>", []token.TokenType{token.APPEND}},
+		{"&&", []token.TokenType{token.AND}},
+		{"||", []token.TokenType{token.OR}},
+		{"==", []token.TokenType{token.EQ}},
+		{"!=", []token.TokenType{token.NOT_EQ}},
+		{"&", []token.TokenType{token.AMPERSAND}},
+	}
+
+	for _, tt := range tests {
+		l := New(tt.input)
+		for i, expectedType := range tt.expected {
+			tok := l.NextToken()
+			if tok.Type != expectedType {
+				t.Errorf("input %q, token %d: expected %s, got %s", tt.input, i, expectedType, tok.Type)
+			}
+		}
+	}
+}
+
+func TestCommentSkipping(t *testing.T) {
+	input := "// this is a comment\n42"
+	l := New(input)
+
+	// Comment produces a newline (SEMICOLON) first, then 42
+	tok := l.NextToken()
+	if tok.Type == token.SEMICOLON {
+		tok = l.NextToken() // skip the newline
+	}
+	if tok.Type != token.INT || tok.Literal != "42" {
+		t.Errorf("expected INT '42' after comment, got %s %q", tok.Type, tok.Literal)
+	}
+}
+
+func TestAllDelimiters(t *testing.T) {
+	input := `(){}[],;:`
+	expected := []token.TokenType{
+		token.LPAREN, token.RPAREN,
+		token.LBRACE, token.RBRACE,
+		token.LBRACKET, token.RBRACKET,
+		token.COMMA, token.SEMICOLON, token.COLON,
+	}
+
+	l := New(input)
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp {
+			t.Errorf("delimiter %d: expected %s, got %s (%q)", i, exp, tok.Type, tok.Literal)
+		}
+	}
+}
+
+func TestAllArithmeticOperators(t *testing.T) {
+	input := `+ - * / %`
+	expected := []token.TokenType{
+		token.PLUS, token.MINUS, token.ASTERISK, token.SLASH, token.MODULO,
+	}
+
+	l := New(input)
+	for i, exp := range expected {
+		tok := l.NextToken()
+		if tok.Type != exp {
+			t.Errorf("operator %d: expected %s, got %s (%q)", i, exp, tok.Type, tok.Literal)
+		}
+	}
+}
+
+func TestIdentifiersWithUnderscores(t *testing.T) {
+	input := `my_var _private __dunder`
+	l := New(input)
+
+	tests := []string{"my_var", "_private", "__dunder"}
+	for _, expected := range tests {
+		tok := l.NextToken()
+		if tok.Type != token.IDENT || tok.Literal != expected {
+			t.Errorf("expected IDENT %q, got %s %q", expected, tok.Type, tok.Literal)
+		}
+	}
+}
+
+func TestEmptyString(t *testing.T) {
+	input := `""`
+	l := New(input)
+
+	tok := l.NextToken()
+	if tok.Type != token.STRING {
+		t.Errorf("expected STRING, got %s", tok.Type)
+	}
+	if tok.Literal != "" {
+		t.Errorf("expected empty string, got %q", tok.Literal)
+	}
+}
+
+func TestEmptyRawString(t *testing.T) {
+	input := `''`
+	l := New(input)
+
+	tok := l.NextToken()
+	if tok.Type != token.RAW_STRING {
+		t.Errorf("expected RAW_STRING, got %s", tok.Type)
+	}
+	if tok.Literal != "" {
+		t.Errorf("expected empty raw string, got %q", tok.Literal)
+	}
+}
+
+func TestBackslashToken(t *testing.T) {
+	input := `\`
+	l := New(input)
+
+	tok := l.NextToken()
+	if tok.Type != token.BACKSLASH {
+		t.Errorf("expected BACKSLASH, got %s", tok.Type)
+	}
+}
+
+func TestAllKeywords(t *testing.T) {
+	keywords := map[string]token.TokenType{
+		"proc":   token.PROC,
+		"let":    token.LET,
+		"const":  token.CONST,
+		"true":   token.TRUE,
+		"false":  token.FALSE,
+		"if":     token.IF,
+		"else":   token.ELSE,
+		"return": token.RETURN,
+		"loop":   token.LOOP,
+		"with":   token.WITH,
+		"pub":    token.PUB,
+		"match":  token.MATCH,
+		"case":   token.CASE,
+	}
+
+	for word, expectedType := range keywords {
+		l := New(word)
+		tok := l.NextToken()
+		if tok.Type != expectedType {
+			t.Errorf("keyword %q: expected %s, got %s", word, expectedType, tok.Type)
+		}
+	}
+}
+
+func TestNonKeywordIdentifiers(t *testing.T) {
+	// Words that look keyword-ish but aren't
+	words := []string{"letx", "iffy", "proclaim", "trueish", "matcher"}
+	for _, word := range words {
+		l := New(word)
+		tok := l.NextToken()
+		if tok.Type != token.IDENT {
+			t.Errorf("%q should be IDENT, got %s", word, tok.Type)
+		}
+	}
+}
