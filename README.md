@@ -41,7 +41,8 @@ greet("dush")
 - **Output capture** -- `let @out = save(echo "hi")`
 - **Scoped env** -- `with (@NODE_ENV = "prod") { ... }`
 - **String/array/number methods** -- trim, replace, split, join, contains, slice, abs, etc.
-- **Interactive shell** -- history, tab completion, `~/.dushis` profile
+- **Customizable prompt** -- oh-my-zsh style `{tokens}` with ANSI colors, git branch, time
+- **Interactive shell** -- history, tab completion, `~/.dush/` config
 - **Cross-platform** -- Windows, Linux, macOS
 
 ## Install
@@ -230,6 +231,28 @@ dush/
 - **shout** -- like `echo`, but ours
 - **ports** -- cross-platform open port scanner (Windows/Linux/macOS native APIs)
 
+## CLI Usage
+
+```
+dush                          # interactive mode
+dush script.dush              # run a script (non-interactive)
+dush -v / --version           # print version
+dush -h / --help              # print help
+```
+
+### Path override flags
+
+```
+dush --env <path>             # override env file (default: ~/.dush/env)
+dush --is <path>              # override is file (default: ~/.dush/is)
+dush --history <path>         # override history file (default: ~/.dush/history)
+```
+
+Useful for testing or running isolated sessions:
+```bash
+dush --env ./test/env --is /dev/null --history /tmp/h examples/showcase.dush
+```
+
 ## Configuration
 
 All config lives in `~/.dush/`:
@@ -242,26 +265,97 @@ All config lives in `~/.dush/`:
 
 **Loading order:** `env` first, then `is`.
 
-### Prompt customization (in `~/.dush/env`)
-
-```bash
-// Default
-@PROMPT_LINE = '{fg:cyan}{user}{reset}@{fg:green}{dir}{reset} {fg:yellow}${reset} '
-
-// With git branch and time
-@PROMPT_LINE = '{fg:dim}{time}{reset} {fg:green}{user}{reset}:{fg:blue}{home_path}{reset} ({fg:magenta}{git}{reset}) $ '
-
-// Hex colors
-@PROMPT_LINE = '{fg:#ff6b6b}{user}{reset} {fg:#a8d8ea}{home_path}{reset} > '
-```
-
-**Tokens:** `{user}`, `{host}`, `{dir}`, `{path}`, `{home_path}`, `{time}`, `{date}`, `{git}`, `{last_status}`, `{os}`, `{newline}`
-**Colors:** `{fg:red}`, `{bg:blue}`, `{fg:#ff5500}`, `{reset}`, `{bold}`, `{dim}`, `{italic}`, `{underline}`
-**Named colors:** black, red, green, yellow, blue, magenta, cyan, white + bright_* variants
-
 ### Non-interactive mode
 
 `dush script.dush` only sources `~/.dush/env`, skipping `~/.dush/is`. Scripts run fast without interactive setup.
+
+## Prompt
+
+The prompt is fully customizable via `@PROMPT_LINE` in `~/.dush/env`. It uses `{token}` syntax inspired by oh-my-zsh.
+
+### Default prompt
+
+```
+@PROMPT_LINE = '{fg:cyan}{user}{reset}@{fg:green}{dir}{reset} {fg:yellow}${reset} '
+```
+
+### Content tokens
+
+| Token | Output |
+|---|---|
+| `{user}` | Current username |
+| `{host}` | Machine hostname |
+| `{dir}` | Current directory basename |
+| `{path}` | Full absolute path |
+| `{home_path}` | Path with `~` replacing home dir |
+| `{time}` | Current time `15:04:05` |
+| `{date}` | Current date `2006-01-02` |
+| `{git}` | Git branch name (empty if not in a repo) |
+| `{last_status}` | Exit code of the last command |
+| `{os}` | Operating system (`windows`, `linux`, `darwin`) |
+| `{newline}` | Line break (for multi-line prompts) |
+
+### Color and style tokens
+
+| Token | Effect |
+|---|---|
+| `{fg:red}` | Set foreground to a named color |
+| `{bg:blue}` | Set background to a named color |
+| `{fg:#ff5500}` | Set foreground to a hex color (true-color) |
+| `{bg:#1a1a2e}` | Set background to a hex color (true-color) |
+| `{reset}` | Reset all colors and styles |
+| `{bold}` | Bold text |
+| `{dim}` | Dim/faint text |
+| `{italic}` | Italic text |
+| `{underline}` | Underlined text |
+
+**Named colors:** `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` -- plus `bright_black` through `bright_white`.
+
+### Continuation prompt
+
+For multi-line input (open braces, etc.):
+
+```
+@CONTINUATION_PROMPT = '{fg:yellow}...{reset} '
+```
+
+### Example prompts
+
+```bash
+// Minimal
+@PROMPT_LINE = '$ '
+
+// Classic user@host:path
+@PROMPT_LINE = '{fg:green}{user}{reset}@{host}:{fg:blue}{home_path}{reset}$ '
+
+// With git branch
+@PROMPT_LINE = '{fg:cyan}{user}{reset}:{fg:blue}{home_path}{reset} ({fg:magenta}{git}{reset}) $ '
+
+// Two-line with timestamp
+@PROMPT_LINE = '{fg:dim}{time}{reset} {fg:cyan}{user}{reset}@{host}:{fg:yellow}{home_path}{reset}{newline}{fg:green}${reset} '
+
+// Powerline-style with hex colors
+@PROMPT_LINE = '{bg:#1a1a2e}{fg:#ff6b6b} {user} {reset}{bg:#16213e}{fg:#a8d8ea} {home_path} {reset}{fg:yellow} > {reset}'
+
+// Show last exit code when non-zero
+@PROMPT_LINE = '{fg:red}{last_status}{reset} {fg:cyan}{dir}{reset} $ '
+```
+
+### Example `~/.dush/env`
+
+```bash
+pub @EDITOR = "vim"
+pub @LANG = "en_US.UTF-8"
+@PROMPT_LINE = '{fg:cyan}{user}{reset}@{fg:green}{dir}{reset} $ '
+```
+
+### Example `~/.dush/is`
+
+```bash
+alias ll='ls -la'
+alias gs='git status'
+echo "Welcome back, @USER_NAME!"
+```
 
 ## License
 
