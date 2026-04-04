@@ -1,4 +1,4 @@
 (name) dush
-(version) 2.0.0
+(version) 0.6.51
 (description) A custom terminal shell written in Go.
 (license) MIT
