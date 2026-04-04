@@ -9,7 +9,7 @@ import (
 	"sync" // Import sync package for mutex
 )
 
-const historyFileName = ".dush_history"
+const historyFileName = "history"
 const maxHistorySize = 1000 // Limit the history to prevent excessively large files
 
 var commandHistory []string

@@ -192,11 +192,19 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	env.Stdout = out
 	env.Stderr = errOut
 
-	// Source ~/.dushis if it exists
+	// Source ~/.dush/env (always loaded first)
 	if home, err := os.UserHomeDir(); err == nil {
-		rcPath := filepath.Join(home, ".dushis")
-		if _, err := os.Stat(rcPath); err == nil {
-			evaluator.EvalSource(rcPath, env)
+		envPath := filepath.Join(home, ".dush", "env")
+		if _, err := os.Stat(envPath); err == nil {
+			evaluator.EvalSource(envPath, env)
+		}
+	}
+
+	// Source ~/.dush/is (interactive sessions only)
+	if home, err := os.UserHomeDir(); err == nil {
+		isPath := filepath.Join(home, ".dush", "is")
+		if _, err := os.Stat(isPath); err == nil {
+			evaluator.EvalSource(isPath, env)
 		}
 	}
 
@@ -254,7 +262,10 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		// Construct the dynamic prompt using App's currentCWD
 		var promptLine string
 		if commandBuffer == "" {
-			promptLine = fmt.Sprintf("%s %s@%s%s ", cfg.PromptPrefix, cfg.UserName, displayDirName, cfg.PromptSuffix)
+			promptPrefix := envStringOr(env, "PROMPT_PREFIX", config.DefaultPromptPrefix)
+				promptSuffix := envStringOr(env, "PROMPT_SUFFIX", config.DefaultPromptSuffix)
+				userName := envStringOr(env, "USER_NAME", config.DefaultUserName)
+				promptLine = fmt.Sprintf("%s %s@%s%s ", promptPrefix, userName, displayDirName, promptSuffix)
 		} else {
 			promptLine = "... " // Continuation prompt
 		}
@@ -374,4 +385,12 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 			}
 		}
 	}
+}
+
+// envStringOr reads a variable from the dush environment, returning fallback if not set.
+func envStringOr(env *evaluator.Environment, name string, fallback string) string {
+	if val, ok := env.Get(name); ok {
+		return val.Inspect()
+	}
+	return fallback
 }

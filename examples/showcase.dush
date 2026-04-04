@@ -1,0 +1,363 @@
+// ============================================================
+// Dush Language Showcase
+// Demonstrates every major feature of the dush scripting language
+// ============================================================
+
+// --- 1. Variables: let, const, pub, assignment ---
+
+@name = "dush"
+let @version = 2
+const @MAX_RETRIES = 5
+pub @APP_ENV = "production"
+pub const @APP_NAME = "showcase"
+
+echo "Running @name v@version"
+echo "Environment: @APP_ENV"
+echo "Max retries: @MAX_RETRIES"
+
+// --- 2. Data types ---
+
+@count = 42
+@pi = 3.14159
+@greeting = "hello world"
+@flag = true
+@items = split("apple,banana,cherry,date,elderberry", ",")
+
+echo "count type:" (type(@count))
+echo "pi type:" (type(@pi))
+echo "greeting type:" (type(@greeting))
+echo "flag type:" (type(@flag))
+
+// --- 3. Arithmetic operators ---
+
+@a = 10
+@b = 3
+
+echo "--- Arithmetic ---"
+echo "10 + 3 =" (@a + @b)
+echo "10 - 3 =" (@a - @b)
+echo "10 * 3 =" (@a * @b)
+echo "10 / 3 =" (@a / @b)
+echo "10 % 3 =" (@a % @b)
+
+// --- 4. Comparison & logical operators ---
+
+echo "--- Comparisons ---"
+echo "10 == 3:" (@a == @b)
+echo "10 != 3:" (@a != @b)
+echo "10 > 3:" (@a > @b)
+echo "10 < 3:" (@a < @b)
+echo "true && false:" (true && false)
+echo "true || false:" (true || false)
+echo "!true:" (!true)
+
+// --- 5. String interpolation vs raw strings ---
+
+@user = "developer"
+echo "Hello @user, welcome to @name!"
+echo 'This is raw: @user is not interpolated'
+
+// --- 6. String methods ---
+
+echo "--- String Methods ---"
+@text = "  Hello, World!  "
+echo "original: @text"
+echo "trimmed:" @text.trim()
+echo "upper:" @text.trim().upper()
+echo "lower:" @text.trim().lower()
+echo "length:" @text.trim().len()
+echo "contains World:" (@text.contains("World"))
+echo "starts_with H:" (@text.starts_with("  H"))
+echo "ends_with !:" (@text.ends_with("!  "))
+
+@path = "src/main/app.go"
+echo "replace / with \\:" (@path.replace_all("/", "\\"))
+
+@csv = "one,two,three"
+@parts = @csv.split(",")
+echo "split:" @parts
+echo "joined back:" @parts.join(" | ")
+
+@empty = ""
+echo "empty.or(fallback):" @empty.or("fallback")
+
+@sub = "hello world"
+echo "slice(0,5):" (@sub.slice(0, 5))
+
+// --- 7. Number methods ---
+
+@neg = -42
+echo "abs(-42):" @neg.abs()
+echo "to_string:" @count.to_string()
+
+// --- 8. Array methods ---
+
+echo "--- Array Methods ---"
+echo "items:" @items
+echo "items.len():" @items.len()
+echo "items.join:" (@items.join(", "))
+echo "contains banana:" (@items.contains("banana"))
+echo "contains grape:" (@items.contains("grape"))
+
+// --- 9. If / else ---
+
+echo "--- If/Else ---"
+@score = 85
+
+if (@score > 90) {
+    echo "Grade: A"
+} else {
+    if (@score > 80) {
+        echo "Grade: B"
+    } else {
+        if (@score > 70) {
+            echo "Grade: C"
+        } else {
+            echo "Grade: F"
+        }
+    }
+}
+
+// --- 10. Match / case ---
+
+echo "--- Match/Case ---"
+
+@day = "wednesday"
+match (@day) {
+    case "monday" { echo "Start of the week" }
+    case "wednesday" { echo "Midweek hump day" }
+    case "friday" { echo "TGIF!" }
+    case _ { echo "Just another day" }
+}
+
+// Match with integers
+@exit_code = 2
+match (@exit_code) {
+    case 0 { echo "Success" }
+    case 1 { echo "General error" }
+    case 2 { echo "Misuse of shell command" }
+    case 126 { echo "Permission denied" }
+    case 127 { echo "Command not found" }
+    case _ { echo "Unknown exit code: @exit_code" }
+}
+
+// Match with boolean conditions
+@temp = 72
+match (true) {
+    case (@temp < 32) { echo "Freezing" }
+    case (@temp < 60) { echo "Cold" }
+    case (@temp < 80) { echo "Pleasant" }
+    case _ { echo "Hot" }
+}
+
+// --- 11. Loops ---
+
+echo "--- Loops ---"
+
+// Conditional loop
+@i = 0
+@sum = 0
+loop (@i < 10) {
+    @sum = @sum + @i
+    @i = @i + 1
+}
+echo "Sum of 0..9:" @sum
+
+// Iterator loop over range
+@factorial = 1
+loop (@n : 6) {
+    if (@n > 0) {
+        @factorial = @factorial * @n
+    }
+}
+echo "6! =" @factorial
+
+// Iterator loop over array
+echo "Shopping list:"
+@fruits = split("apple,banana,cherry", ",")
+@index = 1
+loop (@fruit : @fruits) {
+    echo "  @index. @fruit"
+    @index = @index + 1
+}
+
+// --- 12. Procedures ---
+
+echo "--- Procedures ---"
+
+proc greet(@who) {
+    echo "Hey there, @who!"
+}
+greet("world")
+greet(@name)
+
+proc fibonacci(@n) {
+    if (@n < 2) {
+        return @n
+    }
+    @a = 0
+    @b = 1
+    @i = 2
+    loop (@i < @n + 1) {
+        @temp = @b
+        @b = @a + @b
+        @a = @temp
+        @i = @i + 1
+    }
+    return @b
+}
+
+echo "fib(0) =" (fibonacci(0))
+echo "fib(1) =" (fibonacci(1))
+echo "fib(5) =" (fibonacci(5))
+echo "fib(10) =" (fibonacci(10))
+
+// Proc as value (first-class)
+let @double = proc(@x) { @x * 2 }
+echo "double(21) =" (@double(21))
+
+// Proc returning proc (closure)
+proc make_adder(@n) {
+    return proc(@x) { @x + @n }
+}
+let @add5 = make_adder(5)
+echo "add5(10) =" (@add5(10))
+
+// --- 13. Recursive procedures ---
+
+proc power(@base, @exp) {
+    if (@exp == 0) { return 1 }
+    return @base * (power(@base, @exp - 1))
+}
+echo "2^10 =" (power(2, 10))
+
+// --- 14. String processing pipeline ---
+
+echo "--- String Pipeline ---"
+
+@raw_input = "  John,Jane,Bob,Alice,Charlie  "
+@names = @raw_input.trim().split(",")
+@count = @names.len()
+echo "Found @count names"
+loop (@n : @names) {
+    echo "  - @n"
+}
+
+// --- 15. FizzBuzz ---
+
+echo "--- FizzBuzz (1-20) ---"
+@i = 1
+loop (@i < 21) {
+    if (@i % 15 == 0) {
+        echo "FizzBuzz"
+    } else {
+        if (@i % 3 == 0) {
+            echo "Fizz"
+        } else {
+            if (@i % 5 == 0) {
+                echo "Buzz"
+            } else {
+                echo @i
+            }
+        }
+    }
+    @i = @i + 1
+}
+
+// --- 16. Command chaining ---
+
+echo "--- Command Chaining ---"
+echo "step 1" && echo "step 2" && echo "step 3"
+echo "this succeeds" || echo "this is skipped"
+
+// --- 17. Shell variables (read-only) ---
+
+echo "--- Shell Variables ---"
+echo "OS: @OS_NAME"
+echo "User: @USER_NAME"
+echo "Home: @HOME_DIR"
+echo "CWD: @WORKING_DIR"
+echo "PID: @SHELL_PID"
+echo "Last status: @LAST_STATUS"
+
+// --- 18. Built-in functions ---
+
+echo "--- Built-in Functions ---"
+echo "len hello =" (len("hello"))
+echo "type 42 =" (type(42))
+echo "type 3.14 =" (type(3.14))
+echo "int 3.14 =" (int(3.14))
+echo "float 42 =" (float(42))
+echo "to_upper abc =" (to_upper("abc"))
+echo "to_lower ABC =" (to_lower("ABC"))
+echo "contains foobar bar =" (contains("foobar", "bar"))
+echo ". exists =" (exists("."))
+echo ". is_dir =" (is_dir("."))
+
+// --- 19. With (scoped environment override) ---
+
+echo "--- With Block ---"
+with (@CUSTOM_VAR = "scoped_value") {
+    echo "Inside with: @CUSTOM_VAR"
+}
+
+// --- 20. Complex example: calculator with match ---
+
+echo "--- Calculator ---"
+
+proc calc(@op, @x, @y) {
+    match (@op) {
+        case "add" { return @x + @y }
+        case "sub" { return @x - @y }
+        case "mul" { return @x * @y }
+        case "div" {
+            if (@y == 0) {
+                echo "Error: division by zero"
+                return 0
+            }
+            return @x / @y
+        }
+        case _ {
+            echo "Unknown operation: @op"
+            return 0
+        }
+    }
+}
+
+echo "add 10 5 =" (calc("add", 10, 5))
+echo "sub 10 5 =" (calc("sub", 10, 5))
+echo "mul 10 5 =" (calc("mul", 10, 5))
+echo "div 10 5 =" (calc("div", 10, 5))
+echo "div 10 0 =" (calc("div", 10, 0))
+
+// --- 21. Putting it all together: number classifier ---
+
+proc classify(@n) {
+    @label = ""
+    if (@n % 2 == 0) {
+        @label = "even"
+    } else {
+        @label = "odd"
+    }
+
+    @size = ""
+    match (true) {
+        case (@n < 0) { @size = "negative" }
+        case (@n == 0) { @size = "zero" }
+        case (@n < 10) { @size = "small" }
+        case (@n < 100) { @size = "medium" }
+        case _ { @size = "large" }
+    }
+
+    echo "@n is @size and @label"
+}
+
+echo "--- Number Classifier ---"
+classify(-5)
+classify(0)
+classify(7)
+classify(42)
+classify(999)
+
+echo ""
+echo "Showcase complete!"

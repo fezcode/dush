@@ -79,6 +79,8 @@ func Eval(node ast.Node, env *Environment) object.Object {
 		return evalBlockStatement(node, env)
 	case *ast.IfExpression:
 		return evalIfExpression(node, env)
+	case *ast.MatchExpression:
+		return evalMatchExpression(node, env)
 	case *ast.InfixExpression:
 		// Assignment special handling: @x = value
 		if node.Operator == "=" {
@@ -756,6 +758,48 @@ func evalIfExpression(ie *ast.IfExpression, env *Environment) object.Object {
 		return Eval(ie.Alternative, env)
 	} else {
 		return NULL
+	}
+}
+
+func evalMatchExpression(me *ast.MatchExpression, env *Environment) object.Object {
+	subject := Eval(me.Subject, env)
+	if isError(subject) {
+		return subject
+	}
+
+	for _, mc := range me.Cases {
+		if mc.IsDefault {
+			return Eval(mc.Body, env)
+		}
+
+		caseVal := Eval(mc.Value, env)
+		if isError(caseVal) {
+			return caseVal
+		}
+
+		if objectsEqual(subject, caseVal) {
+			return Eval(mc.Body, env)
+		}
+	}
+
+	return NULL
+}
+
+func objectsEqual(a, b object.Object) bool {
+	if a.Type() != b.Type() {
+		return false
+	}
+	switch av := a.(type) {
+	case *object.Integer:
+		return av.Value == b.(*object.Integer).Value
+	case *object.Float:
+		return av.Value == b.(*object.Float).Value
+	case *object.String:
+		return av.Value == b.(*object.String).Value
+	case *object.Boolean:
+		return av.Value == b.(*object.Boolean).Value
+	default:
+		return a == b
 	}
 }
 

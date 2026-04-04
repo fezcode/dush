@@ -414,6 +414,48 @@ func (ls *LoopStatement) String() string {
 	return out.String()
 }
 
+// MatchExpression: match (@x) { case 1 { ... } case _ { ... } }
+type MatchExpression struct {
+	Token   token.Token // The 'match' token
+	Subject Expression
+	Cases   []*MatchCase
+}
+
+type MatchCase struct {
+	Token      token.Token // The 'case' token
+	Value      Expression  // nil means wildcard (_)
+	IsDefault  bool        // true for case _
+	Body       *BlockStatement
+}
+
+func (me *MatchExpression) expressionNode()      {}
+func (me *MatchExpression) TokenLiteral() string { return me.Token.Literal }
+func (me *MatchExpression) String() string {
+	var out bytes.Buffer
+	out.WriteString("match (")
+	out.WriteString(me.Subject.String())
+	out.WriteString(") { ")
+	for _, c := range me.Cases {
+		out.WriteString(c.String())
+		out.WriteString(" ")
+	}
+	out.WriteString("}")
+	return out.String()
+}
+
+func (mc *MatchCase) String() string {
+	var out bytes.Buffer
+	out.WriteString("case ")
+	if mc.IsDefault {
+		out.WriteString("_")
+	} else {
+		out.WriteString(mc.Value.String())
+	}
+	out.WriteString(" ")
+	out.WriteString(mc.Body.String())
+	return out.String()
+}
+
 // CommandExpression: git status -m "fix"
 type CommandExpression struct {
 	Token token.Token  // The first word (command name)

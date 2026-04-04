@@ -27,17 +27,14 @@ func (c *UnaliasCommand) Execute(ctx context.Context, args []string, out io.Writ
 	cfg := config.GetConfig()
 	aliases := cfg.Aliases
 
-	var (
-		saveUnalias bool
-		aliasName   string
-	)
+	var aliasName string
 
 	// Parse flags
 	filteredArgs := []string{}
 	for _, arg := range args {
 		switch arg {
 		case "-s", "--save":
-			saveUnalias = true
+			// ignored, aliases persist via ~/.dush/is
 		default:
 			filteredArgs = append(filteredArgs, arg)
 		}
@@ -52,15 +49,7 @@ func (c *UnaliasCommand) Execute(ctx context.Context, args []string, out io.Writ
 
 	if _, ok := aliases[aliasName]; ok {
 		delete(aliases, aliasName)
-		if saveUnalias {
-			if err := config.SaveAliases(); err != nil {
-				fmt.Fprintf(errOut, "Error saving aliases: %v\n", err)
-				return err
-			}
-			fmt.Fprintf(out, "Alias '%s' removed and saved.\n", aliasName)
-		} else {
-			fmt.Fprintf(out, "Alias '%s' removed (runtime only).\n", aliasName)
-		}
+		fmt.Fprintf(out, "Alias '%s' removed.\n", aliasName)
 	} else {
 		fmt.Fprintf(errOut, "Alias '%s' not found.\n", aliasName)
 	}

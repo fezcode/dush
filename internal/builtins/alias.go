@@ -100,14 +100,9 @@ func (c *AliasCommand) Execute(ctx context.Context, args []string, out io.Writer
 		value = strings.Trim(value, "'\"")
 
 		aliases[name] = value
-		if saveAlias {
-			if err := config.SaveAliases(); err != nil {
-				fmt.Fprintf(errOut, "Error saving aliases: %v\n", err)
-				return err
-			}
-			fmt.Fprintf(out, "Alias '%s' set to '%s' and saved.\n", name, value)
-		} else {
-			fmt.Fprintf(out, "Alias '%s' set to '%s' (runtime only).\n", name, value)
+		fmt.Fprintf(out, "Alias '%s' set to '%s'.\n", name, value)
+		if !saveAlias {
+			fmt.Fprintf(out, "Add to ~/.dush/is to persist.\n")
 		}
 		return nil
 	}

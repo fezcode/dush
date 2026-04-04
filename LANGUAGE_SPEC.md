@@ -86,6 +86,26 @@ if (@x > 0) {
 }
 ```
 
+### Match / Case
+```
+match (@value) {
+    case 1 { echo "one" }
+    case "hello" { echo "greeting" }
+    case _ { echo "default" }
+}
+```
+
+`case _` is the wildcard/default branch. Cases are evaluated top-to-bottom; the first match wins. Supports integers, floats, strings, and booleans as case values.
+
+Boolean condition pattern:
+```
+match (true) {
+    case (@temp < 32) { echo "freezing" }
+    case (@temp < 80) { echo "pleasant" }
+    case _ { echo "hot" }
+}
+```
+
 ### Loops
 - **Conditional:** `loop (@x < 10) { ... }`
 - **Iterator (array):** `loop (@item : @arr) { ... }`
@@ -159,8 +179,45 @@ These are populated by the shell and cannot be reassigned:
 - `exists(path)` — file/directory exists check
 - `is_dir(path)` — directory check
 
-## 11. Startup Profile
-When `dush` is started as an interactive shell, it automatically looks for and executes a `~/.dushis` (Dush Interactive Shell) file in the user's home directory.
+## 11. Configuration & Startup
+
+All config lives in `~/.dush/`:
+
+| File | Loaded | Purpose |
+|---|---|---|
+| `env` | Always (interactive + scripts) | Environment setup, pub vars, prompt config |
+| `is` | Interactive only | Aliases, greeting, interactive helpers |
+| `history` | Interactive only | Command history (auto-managed) |
+
+### Loading Order
+1. `~/.dush/env` — **always loaded** (interactive + scripts). Environment setup, pub vars, prompt config.
+2. `~/.dush/is` — **interactive only**. Aliases, greeting, interactive helpers.
+
+### Prompt Configuration
+Set these in `~/.dush/env` to customize the prompt (defaults shown):
+```
+@PROMPT_PREFIX = "$"
+@PROMPT_SUFFIX = ">>"
+```
+`@USER_NAME` is auto-populated from the OS but can be overridden.
+
+### Non-interactive Mode
+Running `dush script.dush` only sources `~/.dush/env`, skipping `~/.dush/is`. This keeps script execution fast and predictable.
+
+### Example `~/.dush/env`
+```
+pub @EDITOR = "vim"
+pub @LANG = "en_US.UTF-8"
+@PROMPT_PREFIX = ">"
+@PROMPT_SUFFIX = "$"
+```
+
+### Example `~/.dush/is`
+```
+alias ll='ls -la'
+alias gs='git status'
+echo "Welcome back, @USER_NAME!"
+```
 
 ## 12. Roadmap
 - Pipes & redirection: `ls | grep "go"`, `echo "hello" > file.txt`

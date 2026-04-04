@@ -1,1 +1,0 @@
-This directory is intended for public libraries or reusable packages that other applications might import. Currently, it is empty.

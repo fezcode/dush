@@ -80,6 +80,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.IF, p.parseIfExpression)
 	p.registerPrefix(token.WITH, p.parseWithExpression)
 	p.registerPrefix(token.PROC, p.parseProcLiteral)
+	p.registerPrefix(token.MATCH, p.parseMatchExpression)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -703,6 +704,62 @@ func (p *Parser) parseIfExpression() ast.Expression {
 		}
 
 		expression.Alternative = p.parseBlockStatement()
+	}
+
+	return expression
+}
+
+func (p *Parser) parseMatchExpression() ast.Expression {
+	expression := &ast.MatchExpression{Token: p.curToken}
+
+	if !p.expectPeek(token.LPAREN) {
+		return nil
+	}
+
+	p.nextToken()
+	expression.Subject = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(token.RPAREN) {
+		return nil
+	}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	// Skip newlines
+	for p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	// Parse cases
+	for p.peekTokenIs(token.CASE) {
+		p.nextToken() // consume CASE
+		mc := &ast.MatchCase{Token: p.curToken}
+
+		p.nextToken() // move to the value or _
+
+		if p.curTokenIs(token.IDENT) && p.curToken.Literal == "_" {
+			mc.IsDefault = true
+		} else {
+			mc.Value = p.parseExpression(LOWEST)
+		}
+
+		if !p.expectPeek(token.LBRACE) {
+			return nil
+		}
+
+		mc.Body = p.parseBlockStatement()
+		expression.Cases = append(expression.Cases, mc)
+
+		// Skip newlines between cases
+		for p.peekTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+	}
+
+	if !p.expectPeek(token.RBRACE) {
+		return nil
 	}
 
 	return expression

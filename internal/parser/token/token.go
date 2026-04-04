@@ -71,6 +71,8 @@ const (
 	LOOP   = "LOOP"
 	WITH   = "WITH"
 	PUB    = "PUB"
+	MATCH  = "MATCH"
+	CASE   = "CASE"
 
 	// Legacy (kept as constant, removed from keywords map)
 	SAVE = "SAVE"
@@ -88,6 +90,8 @@ var keywords = map[string]TokenType{
 	"loop":   LOOP,
 	"with":   WITH,
 	"pub":    PUB,
+	"match":  MATCH,
+	"case":   CASE,
 }
 
 func LookupIdent(ident string) TokenType {
