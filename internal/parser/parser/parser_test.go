@@ -113,6 +113,10 @@ func TestCommandExpressions(t *testing.T) {
 		{"echo hello world", "echo", 2},
 		{"echo file.txt", "echo", 1},
 		{"echo -n hello", "echo", 2},
+		{"atlas.ed text.txt", "atlas.ed", 1},
+		{"cd .dush", "cd", 1},
+		{"node.exe --version", "node.exe", 1},
+		{"cd .config", "cd", 1},
 	}
 
 	for _, tt := range tests {

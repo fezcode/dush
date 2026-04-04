@@ -332,8 +332,7 @@ func (p *Parser) parseIdentifier() ast.Expression {
 		p.peekTokenIs(token.EOF) || p.peekTokenIs(token.RPAREN) ||
 		p.peekTokenIs(token.RBRACE) || p.peekTokenIs(token.COMMA) ||
 		p.peekTokenIs(token.PLUS) || p.peekTokenIs(token.ASTERISK) ||
-		p.peekTokenIs(token.SLASH) || p.peekTokenIs(token.MODULO) ||
-		p.peekTokenIs(token.DOT) {
+		p.peekTokenIs(token.SLASH) || p.peekTokenIs(token.MODULO) {
 		return ident
 	}
 
@@ -343,9 +342,25 @@ func (p *Parser) parseIdentifier() ast.Expression {
 
 // parseCommandExpression builds a CommandExpression from an identifier that starts a command.
 func (p *Parser) parseCommandExpression(ident *ast.Identifier) ast.Expression {
+	// Absorb dotted command names: atlas.ed, git.exe, etc.
+	name := ident.Value
+	if p.peekTokenIs(token.DOT) && !p.peekToken.PrecededBySpace {
+		var b strings.Builder
+		b.WriteString(name)
+		for p.peekTokenIs(token.DOT) && !p.peekToken.PrecededBySpace {
+			p.nextToken() // consume DOT
+			b.WriteByte('.')
+			if p.peekTokenIs(token.IDENT) && !p.peekToken.PrecededBySpace {
+				p.nextToken() // consume IDENT after dot
+				b.WriteString(p.curToken.Literal)
+			}
+		}
+		name = b.String()
+	}
+
 	cmd := &ast.CommandExpression{
 		Token: ident.Token,
-		Name:  ident.Value,
+		Name:  name,
 		Args:  []ast.Expression{},
 	}
 
