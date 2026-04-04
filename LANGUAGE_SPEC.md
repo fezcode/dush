@@ -194,12 +194,60 @@ All config lives in `~/.dush/`:
 2. `~/.dush/is` — **interactive only**. Aliases, greeting, interactive helpers.
 
 ### Prompt Configuration
-Set these in `~/.dush/env` to customize the prompt (defaults shown):
+Set `@PROMPT_LINE` in `~/.dush/env` to customize the prompt using tokens:
+
 ```
-@PROMPT_PREFIX = "$"
-@PROMPT_SUFFIX = ">>"
+@PROMPT_LINE = '{fg:cyan}{user}{reset}@{fg:green}{dir}{reset} {fg:yellow}${reset} '
 ```
-`@USER_NAME` is auto-populated from the OS but can be overridden.
+
+#### Available tokens
+
+| Token | Description |
+|---|---|
+| `{user}` | Current username |
+| `{host}` | Hostname |
+| `{dir}` | Current directory name (basename) |
+| `{path}` | Full absolute path |
+| `{home_path}` | Path with `~` for home directory |
+| `{time}` | Current time (HH:MM:SS) |
+| `{date}` | Current date (YYYY-MM-DD) |
+| `{git}` | Current git branch (empty if not in repo) |
+| `{last_status}` | Exit code of last command |
+| `{os}` | Operating system name |
+| `{newline}` | Line break |
+
+#### Color tokens
+
+| Token | Description |
+|---|---|
+| `{fg:COLOR}` | Foreground color |
+| `{bg:COLOR}` | Background color |
+| `{reset}` | Reset all colors/styles |
+| `{bold}` | Bold text |
+| `{dim}` | Dim text |
+| `{italic}` | Italic text |
+| `{underline}` | Underlined text |
+
+Named colors: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, plus `bright_*` variants.
+Hex colors: `{fg:#ff5500}`, `{bg:#1a1a2e}`.
+
+#### Continuation prompt
+Set `@CONTINUATION_PROMPT` to customize the multi-line input prompt (default: `{fg:yellow}...{reset} `).
+
+#### Example prompts
+```
+// Minimal
+@PROMPT_LINE = '$ '
+
+// With git branch
+@PROMPT_LINE = '{fg:green}{user}{reset}:{fg:blue}{home_path}{reset} ({fg:magenta}{git}{reset}) $ '
+
+// Two-line with time
+@PROMPT_LINE = '{fg:dim}{time}{reset} {fg:cyan}{user}{reset}@{fg:cyan}{host}{reset}:{fg:yellow}{home_path}{reset}{newline}{fg:green}${reset} '
+
+// Colorful with status indicator
+@PROMPT_LINE = '{bg:#1a1a2e}{fg:#ff6b6b} {user} {reset}{fg:blue} {home_path} {reset}{fg:yellow}>{reset} '
+```
 
 ### Non-interactive Mode
 Running `dush script.dush` only sources `~/.dush/env`, skipping `~/.dush/is`. This keeps script execution fast and predictable.
@@ -208,8 +256,7 @@ Running `dush script.dush` only sources `~/.dush/env`, skipping `~/.dush/is`. Th
 ```
 pub @EDITOR = "vim"
 pub @LANG = "en_US.UTF-8"
-@PROMPT_PREFIX = ">"
-@PROMPT_SUFFIX = "$"
+@PROMPT_LINE = '{fg:cyan}{user}{reset}@{fg:green}{dir}{reset} $ '
 ```
 
 ### Example `~/.dush/is`

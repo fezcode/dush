@@ -213,6 +213,7 @@ dush/
   internal/
     parser/        # lexer, tokens, AST, Pratt parser
     evaluator/     # tree-walking evaluator, environment, methods
+    prompt/        # customizable prompt renderer with ANSI colors
     builtins/      # built-in shell commands (cd, pwd, help)
     repl/          # interactive shell with history + tab completion
     app/           # global app state
@@ -244,11 +245,19 @@ All config lives in `~/.dush/`:
 ### Prompt customization (in `~/.dush/env`)
 
 ```bash
-@PROMPT_PREFIX = ">"
-@PROMPT_SUFFIX = "$"
+// Default
+@PROMPT_LINE = '{fg:cyan}{user}{reset}@{fg:green}{dir}{reset} {fg:yellow}${reset} '
+
+// With git branch and time
+@PROMPT_LINE = '{fg:dim}{time}{reset} {fg:green}{user}{reset}:{fg:blue}{home_path}{reset} ({fg:magenta}{git}{reset}) $ '
+
+// Hex colors
+@PROMPT_LINE = '{fg:#ff6b6b}{user}{reset} {fg:#a8d8ea}{home_path}{reset} > '
 ```
 
-Defaults: `$` prefix, `>>` suffix. `@USER_NAME` is auto-detected from OS.
+**Tokens:** `{user}`, `{host}`, `{dir}`, `{path}`, `{home_path}`, `{time}`, `{date}`, `{git}`, `{last_status}`, `{os}`, `{newline}`
+**Colors:** `{fg:red}`, `{bg:blue}`, `{fg:#ff5500}`, `{reset}`, `{bold}`, `{dim}`, `{italic}`, `{underline}`
+**Named colors:** black, red, green, yellow, blue, magenta, cyan, white + bright_* variants
 
 ### Non-interactive mode
 

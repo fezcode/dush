@@ -19,6 +19,7 @@ import (
 	"dush/internal/evaluator/object"
 	"dush/internal/parser/lexer"
 	"dush/internal/parser/parser"
+	"dush/internal/prompt"
 	"dush/internal/utils"
 
 	"golang.org/x/term"
@@ -255,17 +256,23 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		}
 
 		currentCWD := appInstance.GetCurrentDir()
-		displayDirName := utils.GetDisplayDirName(currentCWD)
 
-		// Construct the dynamic prompt using App's currentCWD
+		// Build prompt context
+		lastStatus := "0"
+		if val, ok := env.Get("LAST_STATUS"); ok {
+			lastStatus = val.Inspect()
+		}
+		pctx := prompt.BuildContext(lastStatus)
+		pctx.CWD = currentCWD
+
+		// Construct the dynamic prompt
 		var promptLine string
 		if commandBuffer == "" {
-			promptPrefix := envStringOr(env, "PROMPT_PREFIX", config.DefaultPromptPrefix)
-				promptSuffix := envStringOr(env, "PROMPT_SUFFIX", config.DefaultPromptSuffix)
-				userName := envStringOr(env, "USER_NAME", config.DefaultUserName)
-				promptLine = fmt.Sprintf("%s %s@%s%s ", promptPrefix, userName, displayDirName, promptSuffix)
+			promptFmt := envStringOr(env, "PROMPT_LINE", prompt.DefaultPromptLine)
+			promptLine = prompt.Render(promptFmt, pctx)
 		} else {
-			promptLine = "... " // Continuation prompt
+			contFmt := envStringOr(env, "CONTINUATION_PROMPT", prompt.DefaultContinuationPrompt)
+			promptLine = prompt.Render(contFmt, pctx)
 		}
 
 		var line string
