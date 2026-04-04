@@ -192,17 +192,15 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	env.Stdout = out
 	env.Stderr = errOut
 
-	// Source ~/.dush/env (always loaded first)
-	if home, err := os.UserHomeDir(); err == nil {
-		envPath := filepath.Join(home, ".dush", "env")
+	// Source env file (always loaded first)
+	if envPath := config.ShellPaths.Env; envPath != "" {
 		if _, err := os.Stat(envPath); err == nil {
 			evaluator.EvalSource(envPath, env)
 		}
 	}
 
-	// Source ~/.dush/is (interactive sessions only)
-	if home, err := os.UserHomeDir(); err == nil {
-		isPath := filepath.Join(home, ".dush", "is")
+	// Source is file (interactive sessions only)
+	if isPath := config.ShellPaths.Is; isPath != "" {
 		if _, err := os.Stat(isPath); err == nil {
 			evaluator.EvalSource(isPath, env)
 		}

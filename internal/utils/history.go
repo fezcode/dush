@@ -2,42 +2,38 @@ package utils
 
 import (
 	"bufio"
+	"dush/internal/config"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync" // Import sync package for mutex
+	"sync"
 )
 
-const historyFileName = "history"
-const maxHistorySize = 1000 // Limit the history to prevent excessively large files
+const maxHistorySize = 1000
 
 var commandHistory []string
-var historyMutex sync.Mutex // Mutex to protect commandHistory and file operations
+var historyMutex sync.Mutex
 
-// getHistoryFilePath returns the full path to the history file.
+// getHistoryFilePath returns the resolved history file path.
 func getHistoryFilePath() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	path := config.ShellPaths.History
+	if path == "" {
+		return "", fmt.Errorf("history path not resolved")
 	}
-	dushDir := filepath.Join(homeDir, ".dush")
-	// Ensure the .dush directory exists
-	if _, err := os.Stat(dushDir); os.IsNotExist(err) {
-		err = os.Mkdir(dushDir, 0700)
-		if err != nil {
-			return "", fmt.Errorf("failed to create .dush directory: %w", err)
-		}
+	// Ensure parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
-	return filepath.Join(dushDir, historyFileName), nil
+	return path, nil
 }
 
-// readHistoryFile reads history from the file, returns a new slice.
 func readHistoryFile(filePath string) ([]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []string{}, nil // File doesn't exist, return empty history
+			return []string{}, nil
 		}
 		return nil, fmt.Errorf("error opening history file: %w", err)
 	}
@@ -75,7 +71,6 @@ func LoadHistory() {
 	}
 
 	commandHistory = loadedHistory
-	// Trim history if it exceeds maxHistorySize
 	if len(commandHistory) > maxHistorySize {
 		commandHistory = commandHistory[len(commandHistory)-maxHistorySize:]
 	}
@@ -88,17 +83,16 @@ func AddCommand(command string) {
 
 	trimmedCommand := strings.TrimSpace(command)
 	if trimmedCommand == "" {
-		return // Don't add empty commands
+		return
 	}
 
 	commandHistory = append(commandHistory, trimmedCommand)
 	if len(commandHistory) > maxHistorySize {
-		commandHistory = commandHistory[1:] // Remove the oldest command
+		commandHistory = commandHistory[1:]
 	}
 }
 
 // SaveHistory writes the in-memory history to the history file, merging with external changes.
-// reload, merge, save strategy.
 func SaveHistory() {
 	historyMutex.Lock()
 	defer historyMutex.Unlock()
@@ -109,19 +103,15 @@ func SaveHistory() {
 		return
 	}
 
-	// 1. Read existing file history
 	fileHistory, err := readHistoryFile(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading history file for merging: %v\n", err)
-		// If we can't read, we'll just write our current in-memory history (commandHistory)
-		fileHistory = []string{} // Treat as empty to avoid nil issues
+		fileHistory = []string{}
 	}
 
-	// 2. Combine and deduplicate
 	var mergedHistory []string
 	seen := make(map[string]bool)
 
-	// Add fileHistory to mergedHistory, keeping unique and in order
 	for _, cmd := range fileHistory {
 		trimmedCmd := strings.TrimSpace(cmd)
 		if trimmedCmd != "" && !seen[trimmedCmd] {
@@ -130,7 +120,6 @@ func SaveHistory() {
 		}
 	}
 
-	// Add current session's commandHistory to mergedHistory, keeping unique and in order
 	for _, cmd := range commandHistory {
 		trimmedCmd := strings.TrimSpace(cmd)
 		if trimmedCmd != "" && !seen[trimmedCmd] {
@@ -139,12 +128,10 @@ func SaveHistory() {
 		}
 	}
 
-	// 3. Trim to maxHistorySize
 	if len(mergedHistory) > maxHistorySize {
 		mergedHistory = mergedHistory[len(mergedHistory)-maxHistorySize:]
 	}
 
-	// 4. Write mergedHistory to file
 	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening history file for writing: %v\n", err)
@@ -167,7 +154,6 @@ func SaveHistory() {
 func GetHistory() []string {
 	historyMutex.Lock()
 	defer historyMutex.Unlock()
-	// Return a copy to prevent external modification of the internal slice
 	historyCopy := make([]string, len(commandHistory))
 	copy(historyCopy, commandHistory)
 	return historyCopy
