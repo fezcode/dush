@@ -40,10 +40,10 @@ func (p *Program) String() string {
 	return out.String()
 }
 
-// LetStatement: let x = 5;
+// LetStatement: let @x = 5
 type LetStatement struct {
 	Token token.Token // the token.LET token
-	Name  *Identifier
+	Name  *VarExpression
 	Value Expression
 }
 
@@ -51,11 +51,58 @@ func (ls *LetStatement) statementNode()       {}
 func (ls *LetStatement) TokenLiteral() string { return ls.Token.Literal }
 func (ls *LetStatement) String() string {
 	var out bytes.Buffer
-	out.WriteString(ls.TokenLiteral() + " ")
-	out.WriteString(ls.Name.String())
+	out.WriteString(ls.TokenLiteral() + " @")
+	out.WriteString(ls.Name.Name)
 	out.WriteString(" = ")
 	if ls.Value != nil {
 		out.WriteString(ls.Value.String())
+	}
+	out.WriteString(";")
+	return out.String()
+}
+
+// ConstStatement: const @x = 5
+type ConstStatement struct {
+	Token token.Token
+	Name  *VarExpression
+	Value Expression
+}
+
+func (cs *ConstStatement) statementNode()       {}
+func (cs *ConstStatement) TokenLiteral() string { return cs.Token.Literal }
+func (cs *ConstStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("const @")
+	out.WriteString(cs.Name.Name)
+	out.WriteString(" = ")
+	if cs.Value != nil {
+		out.WriteString(cs.Value.String())
+	}
+	out.WriteString(";")
+	return out.String()
+}
+
+// PubStatement: pub @x = 5, pub const @x = 5, or pub @x
+type PubStatement struct {
+	Token   token.Token
+	Name    *VarExpression
+	Value   Expression // nil if just marking existing var as pub
+	IsConst bool
+}
+
+func (ps *PubStatement) statementNode()       {}
+func (ps *PubStatement) TokenLiteral() string { return ps.Token.Literal }
+func (ps *PubStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("pub ")
+	if ps.IsConst {
+		out.WriteString("const ")
+	}
+	out.WriteString("@")
+	out.WriteString(ps.Name.Name)
+	if ps.Value != nil {
+		out.WriteString(" = ")
+		out.WriteString(ps.Value.String())
 	}
 	out.WriteString(";")
 	return out.String()
@@ -110,7 +157,7 @@ func (bs *BlockStatement) String() string {
 	return out.String()
 }
 
-// Identifier: x
+// Identifier: x (bare word — always a command name or literal string in the new system)
 type Identifier struct {
 	Token token.Token // the token.IDENT token
 	Value string
@@ -119,6 +166,59 @@ type Identifier struct {
 func (i *Identifier) expressionNode()      {}
 func (i *Identifier) TokenLiteral() string { return i.Token.Literal }
 func (i *Identifier) String() string       { return i.Value }
+
+// VarExpression: @x (variable access)
+type VarExpression struct {
+	Token token.Token // the AT token
+	Name  string      // variable name without @
+}
+
+func (ve *VarExpression) expressionNode()      {}
+func (ve *VarExpression) TokenLiteral() string { return ve.Token.Literal }
+func (ve *VarExpression) String() string       { return "@" + ve.Name }
+
+// MethodCallExpression: @x.upper() or @x.slice(0, 5)
+type MethodCallExpression struct {
+	Token     token.Token  // the DOT token
+	Object    Expression   // the expression before the dot
+	Method    string       // method name
+	Arguments []Expression // method arguments
+}
+
+func (mc *MethodCallExpression) expressionNode()      {}
+func (mc *MethodCallExpression) TokenLiteral() string { return mc.Token.Literal }
+func (mc *MethodCallExpression) String() string {
+	var out bytes.Buffer
+	out.WriteString(mc.Object.String())
+	out.WriteString(".")
+	out.WriteString(mc.Method)
+	out.WriteString("(")
+	args := []string{}
+	for _, a := range mc.Arguments {
+		args = append(args, a.String())
+	}
+	out.WriteString(strings.Join(args, ", "))
+	out.WriteString(")")
+	return out.String()
+}
+
+// InterpolatedStringExpression: "hello @name" → parts: [StringLiteral("hello "), VarExpression("name")]
+type InterpolatedStringExpression struct {
+	Token token.Token   // the STRING token
+	Parts []Expression  // mix of StringLiteral and VarExpression/MethodCallExpression
+}
+
+func (is *InterpolatedStringExpression) expressionNode()      {}
+func (is *InterpolatedStringExpression) TokenLiteral() string { return is.Token.Literal }
+func (is *InterpolatedStringExpression) String() string {
+	var out bytes.Buffer
+	out.WriteString("\"")
+	for _, p := range is.Parts {
+		out.WriteString(p.String())
+	}
+	out.WriteString("\"")
+	return out.String()
+}
 
 // IntegerLiteral: 5
 type IntegerLiteral struct {
@@ -148,7 +248,7 @@ type StringLiteral struct {
 
 func (sl *StringLiteral) expressionNode()      {}
 func (sl *StringLiteral) TokenLiteral() string { return sl.Token.Literal }
-func (sl *StringLiteral) String() string       { return sl.Token.Literal }
+func (sl *StringLiteral) String() string       { return sl.Value }
 
 // BooleanLiteral: true / false
 type BooleanLiteral struct {
@@ -221,9 +321,9 @@ func (ie *IfExpression) String() string {
 	return out.String()
 }
 
-// CallExpression: add(1, 2) OR var(x)
+// CallExpression: add(1, 2)
 type CallExpression struct {
-	Token     token.Token // The '(' token or the Identifier before it? Usually the '('
+	Token     token.Token // The '(' token
 	Function  Expression  // Identifier or FunctionLiteral
 	Arguments []Expression
 }
@@ -243,11 +343,11 @@ func (ce *CallExpression) String() string {
 	return out.String()
 }
 
-// ProcStatement: proc name(x, y) { ... }
+// ProcStatement: proc name(@x, @y) { ... }
 type ProcStatement struct {
 	Token      token.Token // The 'proc' token
 	Name       *Identifier
-	Parameters []*Identifier
+	Parameters []*VarExpression
 	Body       *BlockStatement
 }
 
@@ -268,10 +368,10 @@ func (ps *ProcStatement) String() string {
 	return out.String()
 }
 
-// ProcLiteral: proc(x, y) { ... } (anonymous function)
+// ProcLiteral: proc(@x, @y) { ... } (anonymous function)
 type ProcLiteral struct {
 	Token      token.Token // The 'proc' token
-	Parameters []*Identifier
+	Parameters []*VarExpression
 	Body       *BlockStatement
 }
 
@@ -290,12 +390,12 @@ func (pl *ProcLiteral) String() string {
 	return out.String()
 }
 
-// LoopStatement: loop (x < 10) OR loop (x : items)
+// LoopStatement: loop (@x < 10) OR loop (@x : items)
 type LoopStatement struct {
-	Token     token.Token // LOOP
-	Condition Expression  // Not nil for conditional loops
-	Iterator  *Identifier // Not nil for iterator loops
-	Source    Expression  // Not nil for iterator loops
+	Token     token.Token    // LOOP
+	Condition Expression     // Not nil for conditional loops
+	Iterator  *VarExpression // Not nil for iterator loops
+	Source    Expression     // Not nil for iterator loops
 	Body      *BlockStatement
 }
 
@@ -314,7 +414,7 @@ func (ls *LoopStatement) String() string {
 	return out.String()
 }
 
-// CommandStatement: git status -m "fix"
+// CommandExpression: git status -m "fix"
 type CommandExpression struct {
 	Token token.Token  // The first word (command name)
 	Name  string       // "git"
@@ -334,7 +434,7 @@ func (ce *CommandExpression) String() string {
 	return out.String()
 }
 
-// WithExpression: with (ENV="val") { ... }
+// WithExpression: with (@ENV="val") { ... }
 type WithExpression struct {
 	Token        token.Token // The 'with' token
 	EnvOverrides map[string]Expression
@@ -346,13 +446,13 @@ func (we *WithExpression) TokenLiteral() string { return we.Token.Literal }
 func (we *WithExpression) String() string {
 	var out bytes.Buffer
 	out.WriteString("with (")
-	
+
 	pairs := []string{}
 	for k, v := range we.EnvOverrides {
-		pairs = append(pairs, k+"="+v.String())
+		pairs = append(pairs, "@"+k+"="+v.String())
 	}
 	out.WriteString(strings.Join(pairs, ", "))
-	
+
 	out.WriteString(") ")
 	out.WriteString(we.Body.String())
 	return out.String()

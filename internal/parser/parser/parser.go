@@ -6,6 +6,7 @@ import (
 	"dush/internal/parser/token"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // Precedence constants
@@ -20,6 +21,7 @@ const (
 	PRODUCT     // *
 	PREFIX      // -X or !X
 	CALL        // myFunction(X)
+	DOT_PREC    // method calls .method()
 )
 
 var precedences = map[token.TokenType]int{
@@ -38,6 +40,7 @@ var precedences = map[token.TokenType]int{
 	token.ASTERISK: PRODUCT,
 	token.MODULO:   PRODUCT,
 	token.LPAREN:   CALL,
+	token.DOT:      DOT_PREC,
 }
 
 type (
@@ -64,9 +67,11 @@ func New(l *lexer.Lexer) *Parser {
 
 	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
 	p.registerPrefix(token.IDENT, p.parseIdentifier)
+	p.registerPrefix(token.AT, p.parseVarExpression)
 	p.registerPrefix(token.INT, p.parseIntegerLiteral)
 	p.registerPrefix(token.FLOAT, p.parseFloatLiteral)
 	p.registerPrefix(token.STRING, p.parseStringLiteral)
+	p.registerPrefix(token.RAW_STRING, p.parseRawStringLiteral)
 	p.registerPrefix(token.BANG, p.parsePrefixExpression)
 	p.registerPrefix(token.MINUS, p.parsePrefixExpression)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
@@ -74,7 +79,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
 	p.registerPrefix(token.IF, p.parseIfExpression)
 	p.registerPrefix(token.WITH, p.parseWithExpression)
-	p.registerPrefix(token.PROC, p.parseProcLiteral) // TODO: Implement
+	p.registerPrefix(token.PROC, p.parseProcLiteral)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -92,6 +97,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.PIPE, p.parseInfixExpression)
 	p.registerInfix(token.ASSIGN, p.parseInfixExpression)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
+	p.registerInfix(token.DOT, p.parseMethodCallExpression)
 
 	// Read two tokens, so curToken and peekToken are both set
 	p.nextToken()
@@ -134,6 +140,10 @@ func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
 	case token.LET:
 		return p.parseLetStatement()
+	case token.CONST:
+		return p.parseConstStatement()
+	case token.PUB:
+		return p.parsePubStatement()
 	case token.PROC:
 		return p.parseProcStatement()
 	case token.LOOP:
@@ -145,14 +155,19 @@ func (p *Parser) parseStatement() ast.Statement {
 	}
 }
 
+// parseLetStatement: let @x = expr
 func (p *Parser) parseLetStatement() *ast.LetStatement {
 	stmt := &ast.LetStatement{Token: p.curToken}
+
+	if !p.expectPeek(token.AT) {
+		return nil
+	}
 
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
 
-	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	stmt.Name = &ast.VarExpression{Token: p.curToken, Name: p.curToken.Literal}
 
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
@@ -161,6 +176,70 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 	p.nextToken()
 
 	stmt.Value = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+// parseConstStatement: const @x = expr
+func (p *Parser) parseConstStatement() *ast.ConstStatement {
+	stmt := &ast.ConstStatement{Token: p.curToken}
+
+	if !p.expectPeek(token.AT) {
+		return nil
+	}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	stmt.Name = &ast.VarExpression{Token: p.curToken, Name: p.curToken.Literal}
+
+	if !p.expectPeek(token.ASSIGN) {
+		return nil
+	}
+
+	p.nextToken()
+
+	stmt.Value = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+// parsePubStatement: pub @x = expr, pub const @x = expr, or pub @x
+func (p *Parser) parsePubStatement() *ast.PubStatement {
+	stmt := &ast.PubStatement{Token: p.curToken}
+
+	// Check for pub const
+	if p.peekTokenIs(token.CONST) {
+		p.nextToken() // consume const
+		stmt.IsConst = true
+	}
+
+	if !p.expectPeek(token.AT) {
+		return nil
+	}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	stmt.Name = &ast.VarExpression{Token: p.curToken, Name: p.curToken.Literal}
+
+	// Optional assignment
+	if p.peekTokenIs(token.ASSIGN) {
+		p.nextToken() // consume =
+		p.nextToken() // move to value
+
+		stmt.Value = p.parseExpression(LOWEST)
+	}
 
 	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()
@@ -220,61 +299,161 @@ func (p *Parser) parseExpression(precedence int) ast.Expression {
 
 // --- Prefix Parsing Functions ---
 
+// parseVarExpression: @name
+func (p *Parser) parseVarExpression() ast.Expression {
+	atToken := p.curToken // the @ token
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	return &ast.VarExpression{Token: atToken, Name: p.curToken.Literal}
+}
+
 func (p *Parser) parseIdentifier() ast.Expression {
 	ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 
-	// Look ahead to decide if this is a Command
-	// Operators like + - * / && || == != < > are typically NOT parts of command names
-	// but - can be start of a flag.
+	// In the @ system, bare identifiers are ALWAYS commands (unless followed by
+	// an operator that makes them an expression — like function calls or infix ops).
+	// Check if this looks like a command: if peek is NOT an operator/terminator/paren, it's a command.
+	// If peek is LPAREN with NO space → function call (return ident, Pratt handles call infix)
+	// If peek is LPAREN WITH space → command with grouped arg (enter command mode)
+	if p.peekTokenIs(token.LPAREN) && !p.peekToken.PrecededBySpace {
+		return ident // Will be picked up as CallExpression by Pratt infix
+	}
+
 	if p.peekTokenIs(token.ASSIGN) ||
 		p.peekTokenIs(token.EQ) || p.peekTokenIs(token.NOT_EQ) ||
 		p.peekTokenIs(token.LT) || p.peekTokenIs(token.GT) ||
 		p.peekTokenIs(token.APPEND) || p.peekTokenIs(token.PIPE) ||
 		p.peekTokenIs(token.AND) || p.peekTokenIs(token.OR) ||
-		p.peekTokenIs(token.LPAREN) || p.peekTokenIs(token.SEMICOLON) ||
+		p.peekTokenIs(token.SEMICOLON) ||
 		p.peekTokenIs(token.EOF) || p.peekTokenIs(token.RPAREN) ||
 		p.peekTokenIs(token.RBRACE) || p.peekTokenIs(token.COMMA) ||
 		p.peekTokenIs(token.PLUS) || p.peekTokenIs(token.ASTERISK) ||
-		p.peekTokenIs(token.SLASH) || p.peekTokenIs(token.MODULO) {
+		p.peekTokenIs(token.SLASH) || p.peekTokenIs(token.MODULO) ||
+		p.peekTokenIs(token.DOT) {
 		return ident
 	}
 
 	// It's a command!
+	return p.parseCommandExpression(ident)
+}
+
+// parseCommandExpression builds a CommandExpression from an identifier that starts a command.
+func (p *Parser) parseCommandExpression(ident *ast.Identifier) ast.Expression {
 	cmd := &ast.CommandExpression{
 		Token: ident.Token,
 		Name:  ident.Value,
 		Args:  []ast.Expression{},
 	}
 
-	// Consume arguments until we hit a terminator token in PEEK
-	for !p.peekTokenIs(token.SEMICOLON) && !p.peekTokenIs(token.EOF) &&
-		!p.peekTokenIs(token.AND) && !p.peekTokenIs(token.OR) &&
-		!p.peekTokenIs(token.PIPE) && !p.peekTokenIs(token.GT) &&
-		!p.peekTokenIs(token.APPEND) && !p.peekTokenIs(token.LT) &&
-		!p.peekTokenIs(token.RPAREN) && !p.peekTokenIs(token.RBRACE) &&
-		!p.peekTokenIs(token.PLUS) && !p.peekTokenIs(token.ASTERISK) &&
-		!p.peekTokenIs(token.SLASH) && !p.peekTokenIs(token.MODULO) {
-
-		p.nextToken() // Move to next token (the argument)
-
-		if p.prefixParseFns[p.curToken.Type] == nil {
-			// Treat as string literal
-			arg := &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
-			cmd.Args = append(cmd.Args, arg)
-			continue
-		}
-
-		arg := p.parseExpression(LOWEST)
+	// Consume arguments until we hit a command terminator in PEEK
+	for !isCommandTerminator(p.peekToken.Type) {
+		p.nextToken()
+		arg := p.parseCommandArg()
 		if arg != nil {
 			cmd.Args = append(cmd.Args, arg)
 		}
-		// Note: parseExpression might advance tokens.
-		// We rely on it stopping at the end of the expression.
-		// Pratt parser guarantees curToken is the last token of expression.
-		// So loop check (peek) works for next iteration.
 	}
 
 	return cmd
+}
+
+// isCommandTerminator returns true for tokens that end command argument parsing.
+func isCommandTerminator(t token.TokenType) bool {
+	switch t {
+	case token.SEMICOLON, token.EOF,
+		token.AND, token.OR,
+		token.PIPE, token.GT, token.APPEND, token.LT,
+		token.RPAREN, token.RBRACE:
+		return true
+	}
+	return false
+}
+
+// parseCommandArg parses a single command argument.
+// This is the rewritten command arg loop that fixes bugs 1 and 2.
+func (p *Parser) parseCommandArg() ast.Expression {
+	switch p.curToken.Type {
+	case token.AT:
+		// Variable reference: @name, @name.method()
+		return p.parseVarExpressionWithMethods()
+
+	case token.STRING:
+		// Double-quoted string, may have interpolation
+		return p.parseStringLiteral()
+
+	case token.RAW_STRING:
+		// Single-quoted string, no interpolation
+		return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+
+	case token.LPAREN:
+		// Grouped expression: (expr) — full expression parsing inside parens
+		return p.parseGroupedExpression()
+
+	default:
+		// Build a "word" by concatenating adjacent non-space tokens.
+		// Handles: file.txt, -la, --verbose, C:\Users\foo, *.go, etc.
+		return p.parseCommandWord()
+	}
+}
+
+// parseVarExpressionWithMethods parses @name and then any .method() chains,
+// used in command argument context where we can't rely on Pratt infix dispatch.
+func (p *Parser) parseVarExpressionWithMethods() ast.Expression {
+	atToken := p.curToken
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+
+	var expr ast.Expression = &ast.VarExpression{Token: atToken, Name: p.curToken.Literal}
+
+	// Check for method chains: .method()
+	for p.peekTokenIs(token.DOT) && !p.peekToken.PrecededBySpace {
+		p.nextToken() // consume DOT
+		dotToken := p.curToken
+
+		if !p.expectPeek(token.IDENT) {
+			return expr
+		}
+		methodName := p.curToken.Literal
+
+		var args []ast.Expression
+		if p.peekTokenIs(token.LPAREN) {
+			p.nextToken() // consume (
+			args = p.parseCallArguments()
+		}
+
+		expr = &ast.MethodCallExpression{
+			Token:     dotToken,
+			Object:    expr,
+			Method:    methodName,
+			Arguments: args,
+		}
+	}
+
+	return expr
+}
+
+// parseCommandWord concatenates adjacent non-space tokens into a single string literal.
+// Handles paths (file.txt, C:\Users), flags (-la, --verbose), globs (*.go), etc.
+func (p *Parser) parseCommandWord() ast.Expression {
+	word := p.curToken.Literal
+
+	for !isCommandTerminator(p.peekToken.Type) &&
+		!p.peekToken.PrecededBySpace &&
+		p.peekToken.Type != token.AT &&
+		p.peekToken.Type != token.STRING &&
+		p.peekToken.Type != token.RAW_STRING &&
+		p.peekToken.Type != token.LPAREN &&
+		p.peekToken.Type != token.EOF {
+		p.nextToken()
+		word += p.curToken.Literal
+	}
+
+	return &ast.StringLiteral{Token: p.curToken, Value: word}
 }
 
 func (p *Parser) parseIntegerLiteral() ast.Expression {
@@ -305,7 +484,165 @@ func (p *Parser) parseFloatLiteral() ast.Expression {
 	return lit
 }
 
+// parseStringLiteral handles double-quoted strings with @ interpolation.
 func (p *Parser) parseStringLiteral() ast.Expression {
+	raw := p.curToken.Literal
+	tok := p.curToken
+
+	// Check if the string contains @ for interpolation
+	if !strings.Contains(raw, "@") {
+		return &ast.StringLiteral{Token: tok, Value: raw}
+	}
+
+	// Parse interpolation: split on @ patterns
+	parts := p.parseInterpolationParts(raw, tok)
+	if len(parts) == 1 {
+		// Optimization: if only one part, return it directly
+		if sl, ok := parts[0].(*ast.StringLiteral); ok {
+			return sl
+		}
+	}
+
+	return &ast.InterpolatedStringExpression{Token: tok, Parts: parts}
+}
+
+// parseInterpolationParts scans a string for @name and @{expr} patterns.
+func (p *Parser) parseInterpolationParts(raw string, tok token.Token) []ast.Expression {
+	var parts []ast.Expression
+	i := 0
+
+	for i < len(raw) {
+		if raw[i] == '@' {
+			i++
+			if i >= len(raw) {
+				// Trailing @, treat as literal
+				parts = append(parts, &ast.StringLiteral{Token: tok, Value: "@"})
+				break
+			}
+
+			if raw[i] == '{' {
+				// @{expr} — find matching }
+				i++ // skip {
+				start := i
+				depth := 1
+				for i < len(raw) && depth > 0 {
+					if raw[i] == '{' {
+						depth++
+					} else if raw[i] == '}' {
+						depth--
+					}
+					if depth > 0 {
+						i++
+					}
+				}
+				exprStr := raw[start:i]
+				if i < len(raw) {
+					i++ // skip closing }
+				}
+				// Sub-parse the expression
+				subL := lexer.New(exprStr)
+				subP := New(subL)
+				expr := subP.parseExpression(LOWEST)
+				if expr != nil {
+					parts = append(parts, expr)
+				}
+			} else if isIdentStart(raw[i]) {
+				// @name — read identifier, then check for .method()
+				start := i
+				for i < len(raw) && isIdentContinue(raw[i]) {
+					i++
+				}
+				varName := raw[start:i]
+				var expr ast.Expression = &ast.VarExpression{Token: tok, Name: varName}
+
+				// Check for .method() chains
+				for i < len(raw) && raw[i] == '.' {
+					i++ // skip .
+					mStart := i
+					for i < len(raw) && isIdentContinue(raw[i]) {
+						i++
+					}
+					if mStart == i {
+						// Dot with no method name — treat the dot as literal
+						i = mStart // back up past the dot
+						i--        // include the dot
+						break
+					}
+					methodName := raw[mStart:i]
+
+					var args []ast.Expression
+					if i < len(raw) && raw[i] == '(' {
+						i++ // skip (
+						argStart := i
+						depth := 1
+						for i < len(raw) && depth > 0 {
+							if raw[i] == '(' {
+								depth++
+							} else if raw[i] == ')' {
+								depth--
+							}
+							if depth > 0 {
+								i++
+							}
+						}
+						argStr := raw[argStart:i]
+						if i < len(raw) {
+							i++ // skip )
+						}
+						if argStr != "" {
+							// Parse arguments
+							subL := lexer.New(argStr)
+							subP := New(subL)
+							for {
+								arg := subP.parseExpression(LOWEST)
+								if arg != nil {
+									args = append(args, arg)
+								}
+								if !subP.peekTokenIs(token.COMMA) {
+									break
+								}
+								subP.nextToken() // skip comma
+								subP.nextToken() // next arg
+							}
+						}
+					}
+
+					expr = &ast.MethodCallExpression{
+						Token:     tok,
+						Object:    expr,
+						Method:    methodName,
+						Arguments: args,
+					}
+				}
+
+				parts = append(parts, expr)
+			} else {
+				// @ followed by non-ident char — treat @ as literal
+				parts = append(parts, &ast.StringLiteral{Token: tok, Value: "@" + string(raw[i])})
+				i++
+			}
+		} else {
+			// Plain text
+			start := i
+			for i < len(raw) && raw[i] != '@' {
+				i++
+			}
+			parts = append(parts, &ast.StringLiteral{Token: tok, Value: raw[start:i]})
+		}
+	}
+
+	return parts
+}
+
+func isIdentStart(ch byte) bool {
+	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+}
+
+func isIdentContinue(ch byte) bool {
+	return isIdentStart(ch) || '0' <= ch && ch <= '9'
+}
+
+func (p *Parser) parseRawStringLiteral() ast.Expression {
 	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
@@ -408,11 +745,16 @@ func (p *Parser) parseWithExpression() ast.Expression {
 	p.nextToken() // move into arguments
 
 	for !p.curTokenIs(token.RPAREN) && !p.curTokenIs(token.EOF) {
-		if p.curToken.Type != token.IDENT {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier in with(), got %s", p.curToken.Type))
+		// Expect @NAME = expr
+		if p.curToken.Type != token.AT {
+			p.errors = append(p.errors, fmt.Sprintf("expected @ in with(), got %s", p.curToken.Type))
 			return nil
 		}
-		
+
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+
 		key := p.curToken.Literal
 
 		if !p.expectPeek(token.ASSIGN) {
@@ -436,16 +778,27 @@ func (p *Parser) parseWithExpression() ast.Expression {
 		return nil
 	}
 
-	if !p.expectPeek(token.LBRACE) {
-		return nil
+	// Support both block form: with (...) { ... }
+	// and one-liner form: with (...) command args
+	if p.peekTokenIs(token.LBRACE) {
+		p.nextToken() // consume {
+		expression.Body = p.parseBlockStatement()
+	} else {
+		// One-liner: wrap the next statement in a synthetic block
+		p.nextToken()
+		stmt := p.parseStatement()
+		if stmt != nil {
+			expression.Body = &ast.BlockStatement{
+				Token:      p.curToken,
+				Statements: []ast.Statement{stmt},
+			}
+		}
 	}
-
-	expression.Body = p.parseBlockStatement()
 
 	return expression
 }
 
-// parseProcLiteral parses anonymous function literals: proc(x, y) { ... }
+// parseProcLiteral parses anonymous function literals: proc(@x, @y) { ... }
 func (p *Parser) parseProcLiteral() ast.Expression {
 	stmt := &ast.ProcStatement{Token: p.curToken}
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: ""}
@@ -473,13 +826,29 @@ func (p *Parser) parseLoopStatement() *ast.LoopStatement {
 	}
 	p.nextToken() // move to start of expression
 
-	// Check if iterator syntax: IDENT followed by COLON
-	if p.curToken.Type == token.IDENT && p.peekToken.Type == token.COLON {
-		stmt.Iterator = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
-		p.nextToken() // consume ident
-		p.nextToken() // consume colon
+	// Check for iterator syntax: @IDENT followed by COLON
+	if p.curToken.Type == token.AT && p.peekToken.Type == token.IDENT {
+		// Peek further: is it @name : source ?
+		// Save state to check
+		atToken := p.curToken
+		p.nextToken() // consume IDENT
+		identToken := p.curToken
 
-		stmt.Source = p.parseExpression(LOWEST)
+		if p.peekTokenIs(token.COLON) {
+			// Iterator loop: loop (@x : collection)
+			stmt.Iterator = &ast.VarExpression{Token: atToken, Name: identToken.Literal}
+			p.nextToken() // consume colon
+			p.nextToken() // move to source expression
+
+			stmt.Source = p.parseExpression(LOWEST)
+		} else {
+			// Not iterator — it's a condition starting with @var
+			// We need to reconstruct: we already consumed AT and IDENT
+			// Build a VarExpression and continue parsing as condition
+			varExpr := &ast.VarExpression{Token: atToken, Name: identToken.Literal}
+			// Continue parsing the rest of the condition as an infix from varExpr
+			stmt.Condition = p.parseExpressionFrom(varExpr, LOWEST)
+		}
 	} else {
 		stmt.Condition = p.parseExpression(LOWEST)
 	}
@@ -495,6 +864,22 @@ func (p *Parser) parseLoopStatement() *ast.LoopStatement {
 	stmt.Body = p.parseBlockStatement()
 
 	return stmt
+}
+
+// parseExpressionFrom continues Pratt parsing from a pre-parsed left expression.
+func (p *Parser) parseExpressionFrom(left ast.Expression, precedence int) ast.Expression {
+	for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
+		infix := p.infixParseFns[p.peekToken.Type]
+		if infix == nil {
+			return left
+		}
+
+		p.nextToken()
+
+		left = infix(left)
+	}
+
+	return left
 }
 
 func (p *Parser) parseProcStatement() *ast.ProcStatement {
@@ -521,31 +906,40 @@ func (p *Parser) parseProcStatement() *ast.ProcStatement {
 	return stmt
 }
 
-func (p *Parser) parseFunctionParameters() []*ast.Identifier {
-	identifiers := []*ast.Identifier{}
+// parseFunctionParameters parses proc parameters: (@x, @y, @z)
+func (p *Parser) parseFunctionParameters() []*ast.VarExpression {
+	params := []*ast.VarExpression{}
 
 	if p.peekTokenIs(token.RPAREN) {
 		p.nextToken()
-		return identifiers
+		return params
 	}
 
-	p.nextToken()
-
-	ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
-	identifiers = append(identifiers, ident)
+	// First parameter: expect @ident
+	if !p.expectPeek(token.AT) {
+		return nil
+	}
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	params = append(params, &ast.VarExpression{Token: p.curToken, Name: p.curToken.Literal})
 
 	for p.peekTokenIs(token.COMMA) {
-		p.nextToken()
-		p.nextToken()
-		ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
-		identifiers = append(identifiers, ident)
+		p.nextToken() // skip comma
+		if !p.expectPeek(token.AT) {
+			return nil
+		}
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		params = append(params, &ast.VarExpression{Token: p.curToken, Name: p.curToken.Literal})
 	}
 
 	if !p.expectPeek(token.RPAREN) {
 		return nil
 	}
 
-	return identifiers
+	return params
 }
 
 // --- Infix Parsing Functions ---
@@ -568,6 +962,29 @@ func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 	exp := &ast.CallExpression{Token: p.curToken, Function: function}
 	exp.Arguments = p.parseCallArguments()
 	return exp
+}
+
+// parseMethodCallExpression: expr.method() or expr.method(args)
+func (p *Parser) parseMethodCallExpression(left ast.Expression) ast.Expression {
+	dotToken := p.curToken
+
+	if !p.expectPeek(token.IDENT) {
+		return left
+	}
+	methodName := p.curToken.Literal
+
+	var args []ast.Expression
+	if p.peekTokenIs(token.LPAREN) {
+		p.nextToken() // consume (
+		args = p.parseCallArguments()
+	}
+
+	return &ast.MethodCallExpression{
+		Token:     dotToken,
+		Object:    left,
+		Method:    methodName,
+		Arguments: args,
+	}
 }
 
 func (p *Parser) parseCallArguments() []ast.Expression {

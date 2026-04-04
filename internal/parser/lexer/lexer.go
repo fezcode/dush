@@ -28,106 +28,146 @@ func (l *Lexer) readChar() {
 func (l *Lexer) NextToken() token.Token {
 	var tok token.Token
 
-	l.skipWhitespace()
+	hadSpace := l.skipWhitespace()
+	tok.PrecededBySpace = hadSpace
 
 	switch l.ch {
 	case '\n':
 		tok = newToken(token.SEMICOLON, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '=':
 		if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
 			literal := string(ch) + string(l.ch)
-			tok = token.Token{Type: token.EQ, Literal: literal}
+			tok = token.Token{Type: token.EQ, Literal: literal, PrecededBySpace: hadSpace}
 		} else {
 			tok = newToken(token.ASSIGN, l.ch)
+			tok.PrecededBySpace = hadSpace
 		}
 	case '+':
 		tok = newToken(token.PLUS, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '-':
 		tok = newToken(token.MINUS, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '!':
 		if l.peekChar() == '=' {
 			ch := l.ch
 			l.readChar()
 			literal := string(ch) + string(l.ch)
-			tok = token.Token{Type: token.NOT_EQ, Literal: literal}
+			tok = token.Token{Type: token.NOT_EQ, Literal: literal, PrecededBySpace: hadSpace}
 		} else {
 			tok = newToken(token.BANG, l.ch)
+			tok.PrecededBySpace = hadSpace
 		}
 	case '/':
-		// Check for comment //
 		if l.peekChar() == '/' {
 			l.skipSingleLineComment()
-			return l.NextToken() // Recursively call NextToken to get the next real token
+			return l.NextToken()
 		}
 		tok = newToken(token.SLASH, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '*':
 		tok = newToken(token.ASTERISK, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '%':
 		tok = newToken(token.MODULO, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '<':
 		tok = newToken(token.LT, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '>':
 		if l.peekChar() == '>' {
 			ch := l.ch
 			l.readChar()
 			literal := string(ch) + string(l.ch)
-			tok = token.Token{Type: token.APPEND, Literal: literal}
+			tok = token.Token{Type: token.APPEND, Literal: literal, PrecededBySpace: hadSpace}
 		} else {
 			tok = newToken(token.GT, l.ch)
+			tok.PrecededBySpace = hadSpace
 		}
 	case '&':
 		if l.peekChar() == '&' {
 			ch := l.ch
 			l.readChar()
 			literal := string(ch) + string(l.ch)
-			tok = token.Token{Type: token.AND, Literal: literal}
+			tok = token.Token{Type: token.AND, Literal: literal, PrecededBySpace: hadSpace}
 		} else {
 			tok = newToken(token.ILLEGAL, l.ch)
+			tok.PrecededBySpace = hadSpace
 		}
 	case '|':
 		if l.peekChar() == '|' {
 			ch := l.ch
 			l.readChar()
 			literal := string(ch) + string(l.ch)
-			tok = token.Token{Type: token.OR, Literal: literal}
+			tok = token.Token{Type: token.OR, Literal: literal, PrecededBySpace: hadSpace}
 		} else {
 			tok = newToken(token.PIPE, l.ch)
+			tok.PrecededBySpace = hadSpace
 		}
+	case '@':
+		tok = newToken(token.AT, l.ch)
+		tok.PrecededBySpace = hadSpace
+	case '.':
+		tok = newToken(token.DOT, l.ch)
+		tok.PrecededBySpace = hadSpace
+	case '\\':
+		tok = newToken(token.BACKSLASH, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case ';':
 		tok = newToken(token.SEMICOLON, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case ':':
 		tok = newToken(token.COLON, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case ',':
 		tok = newToken(token.COMMA, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '{':
 		tok = newToken(token.LBRACE, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '}':
 		tok = newToken(token.RBRACE, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '(':
 		tok = newToken(token.LPAREN, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case ')':
 		tok = newToken(token.RPAREN, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '[':
 		tok = newToken(token.LBRACKET, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case ']':
 		tok = newToken(token.RBRACKET, l.ch)
+		tok.PrecededBySpace = hadSpace
 	case '"':
 		tok.Type = token.STRING
 		tok.Literal = l.readString()
+		tok.PrecededBySpace = hadSpace
+		return tok
+	case '\'':
+		tok.Type = token.RAW_STRING
+		tok.Literal = l.readRawString()
+		tok.PrecededBySpace = hadSpace
+		return tok
 	case 0:
 		tok.Literal = ""
 		tok.Type = token.EOF
+		tok.PrecededBySpace = hadSpace
 	default:
 		if isLetter(l.ch) {
 			tok.Literal = l.readIdentifier()
 			tok.Type = token.LookupIdent(tok.Literal)
+			tok.PrecededBySpace = hadSpace
 			return tok
 		} else if isDigit(l.ch) {
+			tok.PrecededBySpace = hadSpace
 			tok.Literal = l.readNumber()
 			if l.ch == '.' && isDigit(l.peekChar()) {
-				tok.Literal += string(l.ch)
+				tok.Literal += "."
 				l.readChar()
 				tok.Literal += l.readNumber()
 				tok.Type = token.FLOAT
@@ -137,6 +177,7 @@ func (l *Lexer) NextToken() token.Token {
 			return tok
 		} else {
 			tok = newToken(token.ILLEGAL, l.ch)
+			tok.PrecededBySpace = hadSpace
 		}
 	}
 
@@ -144,10 +185,14 @@ func (l *Lexer) NextToken() token.Token {
 	return tok
 }
 
-func (l *Lexer) skipWhitespace() {
+// skipWhitespace skips spaces, tabs, carriage returns and returns whether any were skipped.
+func (l *Lexer) skipWhitespace() bool {
+	skipped := false
 	for l.ch == ' ' || l.ch == '\t' || l.ch == '\r' {
+		skipped = true
 		l.readChar()
 	}
+	return skipped
 }
 
 func (l *Lexer) skipSingleLineComment() {
@@ -158,12 +203,12 @@ func (l *Lexer) skipSingleLineComment() {
 	for l.ch != '\n' && l.ch != 0 {
 		l.readChar()
 	}
-	l.skipWhitespace() // Skip the newline itself
+	l.skipWhitespace()
 }
 
 func (l *Lexer) readIdentifier() string {
 	position := l.position
-	for isLetter(l.ch) || isDigit(l.ch) { // Identifiers can contain numbers (e.g., arg1)
+	for isLetter(l.ch) || isDigit(l.ch) {
 		l.readChar()
 	}
 	return l.input[position:l.position]
@@ -177,6 +222,7 @@ func (l *Lexer) readNumber() string {
 	return l.input[position:l.position]
 }
 
+// readString reads a double-quoted string (interpolation handled by parser).
 func (l *Lexer) readString() string {
 	position := l.position + 1
 	for {
@@ -185,7 +231,26 @@ func (l *Lexer) readString() string {
 			break
 		}
 	}
-	return l.input[position:l.position]
+	result := l.input[position:l.position]
+	// Don't call l.readChar() here — NextToken's switch already consumed the opening ".
+	// The closing " is consumed by readChar at the end of NextToken.
+	// Actually this returns before the final readChar in NextToken, so we consume closing " here:
+	l.readChar()
+	return result
+}
+
+// readRawString reads a single-quoted string with no interpolation.
+func (l *Lexer) readRawString() string {
+	position := l.position + 1
+	for {
+		l.readChar()
+		if l.ch == '\'' || l.ch == 0 {
+			break
+		}
+	}
+	result := l.input[position:l.position]
+	l.readChar()
+	return result
 }
 
 func (l *Lexer) peekChar() byte {
@@ -199,8 +264,11 @@ func newToken(tokenType token.TokenType, ch byte) token.Token {
 	return token.Token{Type: tokenType, Literal: string(ch)}
 }
 
+// isLetter defines valid identifier characters: a-z, A-Z, _
+// Note: `.`, `:`, `\` are NOT included — they are separate tokens (DOT, COLON, BACKSLASH)
+// for method calls and path handling in command args.
 func isLetter(ch byte) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_' || ch == '.' || ch == ':' || ch == '\\'
+	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
 }
 
 func isDigit(ch byte) bool {

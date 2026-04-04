@@ -4,6 +4,8 @@ package bake_recipe
 import (
 	"fmt"
 	"os"
+	"runtime"
+
 	"github.com/fezcode/gobake"
 )
 
@@ -12,8 +14,47 @@ func Run(bake *gobake.Engine) error {
 		return err
 	}
 
-	bake.Task("build", "Builds the binary for multiple platforms", func(ctx *gobake.Context) error {
-		ctx.Log("Building %s v%s...", bake.Info.Name, bake.Info.Version)
+	bake.Task("build", "Builds the binary for the current platform", func(ctx *gobake.Context) error {
+		ctx.Log("Building %s v%s for %s/%s...", bake.Info.Name, bake.Info.Version, runtime.GOOS, runtime.GOARCH)
+
+		err := ctx.Mkdir("build")
+		if err != nil {
+			return err
+		}
+
+		ldflags := fmt.Sprintf("-X main.Version=%s", bake.Info.Version)
+
+		// Find apps in cmd/
+		entries, _ := os.ReadDir("cmd")
+		var apps []string
+		for _, e := range entries {
+			if e.IsDir() && e.Name() != "commands" && e.Name() != "buildinfo" {
+				if _, err := os.Stat(fmt.Sprintf("cmd/%s/main.go", e.Name())); err == nil {
+					apps = append(apps, e.Name())
+				}
+			}
+		}
+
+		for _, appName := range apps {
+			output := "build/" + appName
+			if runtime.GOOS == "windows" {
+				output += ".exe"
+			}
+
+			ctx.Env = []string{
+				"CGO_ENABLED=0",
+			}
+
+			err := ctx.Run("go", "build", "-ldflags", ldflags, "-o", output, "./cmd/"+appName)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	bake.Task("build-all", "Builds the binary for multiple platforms", func(ctx *gobake.Context) error {
+		ctx.Log("Building %s v%s for all platforms...", bake.Info.Name, bake.Info.Version)
 
 		targets := []struct {
 			os   string

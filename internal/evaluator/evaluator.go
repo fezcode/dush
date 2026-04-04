@@ -6,6 +6,7 @@ import (
 	"dush/internal/builtins"
 	"dush/internal/evaluator/object"
 	"dush/internal/parser/ast"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,7 +32,31 @@ func Eval(node ast.Node, env *Environment) object.Object {
 		if isError(val) {
 			return val
 		}
-		env.Set(node.Name.Value, val)
+		if errMsg := env.Set(node.Name.Name, val); errMsg != "" {
+			return newError("%s", errMsg)
+		}
+	case *ast.ConstStatement:
+		val := Eval(node.Value, env)
+		if isError(val) {
+			return val
+		}
+		if errMsg := env.SetConst(node.Name.Name, val); errMsg != "" {
+			return newError("%s", errMsg)
+		}
+	case *ast.PubStatement:
+		if node.Value != nil {
+			val := Eval(node.Value, env)
+			if isError(val) {
+				return val
+			}
+			if errMsg := env.SetPub(node.Name.Name, val, node.IsConst); errMsg != "" {
+				return newError("%s", errMsg)
+			}
+		} else {
+			if errMsg := env.MarkPub(node.Name.Name); errMsg != "" {
+				return newError("%s", errMsg)
+			}
+		}
 	case *ast.IntegerLiteral:
 		return &object.Integer{Value: node.Value}
 	case *ast.FloatLiteral:
@@ -40,6 +65,12 @@ func Eval(node ast.Node, env *Environment) object.Object {
 		return nativeBoolToBooleanObject(node.Value)
 	case *ast.StringLiteral:
 		return &object.String{Value: node.Value}
+	case *ast.InterpolatedStringExpression:
+		return evalInterpolatedString(node, env)
+	case *ast.VarExpression:
+		return evalVarExpression(node, env)
+	case *ast.MethodCallExpression:
+		return evalMethodCall(node, env)
 	case *ast.Identifier:
 		return evalIdentifier(node, env)
 	case *ast.CommandExpression:
@@ -49,17 +80,19 @@ func Eval(node ast.Node, env *Environment) object.Object {
 	case *ast.IfExpression:
 		return evalIfExpression(node, env)
 	case *ast.InfixExpression:
-		// Assignment special handling
+		// Assignment special handling: @x = value
 		if node.Operator == "=" {
-			if leftIdent, ok := node.Left.(*ast.Identifier); ok {
+			if varExpr, ok := node.Left.(*ast.VarExpression); ok {
 				val := Eval(node.Right, env)
 				if isError(val) {
 					return val
 				}
-				env.Update(leftIdent.Value, val)
+				if errMsg := env.Update(varExpr.Name, val); errMsg != "" {
+					return newError("%s", errMsg)
+				}
 				return val
 			}
-			return newError("left side of assignment must be an identifier")
+			return newError("left side of assignment must be a variable (@name)")
 		}
 
 		if node.Operator == "&&" {
@@ -70,7 +103,7 @@ func Eval(node ast.Node, env *Environment) object.Object {
 			if isTruthy(left) {
 				return Eval(node.Right, env)
 			}
-			return left // False
+			return left
 		}
 		if node.Operator == "||" {
 			left := Eval(node.Left, env)
@@ -78,7 +111,7 @@ func Eval(node ast.Node, env *Environment) object.Object {
 				return left
 			}
 			if isTruthy(left) {
-				return left // True
+				return left
 			}
 			return Eval(node.Right, env)
 		}
@@ -141,8 +174,7 @@ func Eval(node ast.Node, env *Environment) object.Object {
 			if len(args) == 1 && isError(args[0]) {
 				return args[0]
 			}
-			
-			// Return stdout captured as String
+
 			return &object.String{Value: buf.String()}
 		}
 
@@ -159,6 +191,26 @@ func Eval(node ast.Node, env *Environment) object.Object {
 	return nil
 }
 
+func evalInterpolatedString(node *ast.InterpolatedStringExpression, env *Environment) object.Object {
+	var buf bytes.Buffer
+	for _, part := range node.Parts {
+		val := Eval(part, env)
+		if isError(val) {
+			return val
+		}
+		buf.WriteString(objectToString(val))
+	}
+	return &object.String{Value: buf.String()}
+}
+
+func evalVarExpression(node *ast.VarExpression, env *Environment) object.Object {
+	val, ok := env.Get(node.Name)
+	if !ok {
+		return newError("undefined variable '@%s'", node.Name)
+	}
+	return val
+}
+
 func evalExpressions(exps []ast.Expression, env *Environment) []object.Object {
 	var result []object.Object
 	for _, e := range exps {
@@ -172,16 +224,16 @@ func evalExpressions(exps []ast.Expression, env *Environment) []object.Object {
 }
 
 func isShellOperation(node ast.Expression, env *Environment) bool {
-	switch n := node.(type) {
+	switch node.(type) {
 	case *ast.CommandExpression:
 		return true
-	case *ast.Identifier:
-		// If the identifier is a variable in scope, it's not a shell command
-		if _, ok := env.Get(n.Value); ok {
+	case *ast.InfixExpression:
+		return true
+	}
+	if ident, ok := node.(*ast.Identifier); ok {
+		if _, ok := functionBuiltins[ident.Value]; ok {
 			return false
 		}
-		return true
-	case *ast.InfixExpression: // for chaining multiple pipes/redirections it might be infix
 		return true
 	}
 	return false
@@ -206,15 +258,6 @@ func evalShellOperation(node *ast.InfixExpression, env *Environment) object.Obje
 		rightEnv := NewEnclosedEnvironment(env)
 		rightEnv.Stdin = pr
 
-		// Run the right side in a goroutine because it might block reading from Stdin
-		// Wait, actually, standard pipeline: 
-		// Left writes to pw, Right reads from pr.
-		// `cmd.Run()` blocks. If we run Left first, it'll block writing to pw if buffer is full.
-		// If we run Right first, it'll block reading from pr until Left writes.
-		// We must run them concurrently and wait for both. 
-		// But in dush, `Eval` is synchronous. 
-
-		// We can span a goroutine for the left side
 		go func() {
 			Eval(node.Left, leftEnv)
 			pw.Close()
@@ -271,7 +314,8 @@ func applyFunction(fn object.Object, args []object.Object) object.Object {
 	switch function := fn.(type) {
 	case *object.Function:
 		extendedEnv := extendFunctionEnv(function, args)
-		evaluated := Eval(function.Body, extendedEnv)
+		body := function.Body.(*ast.BlockStatement)
+		evaluated := Eval(body, extendedEnv)
 		return unwrapReturnValue(evaluated)
 	case *object.Builtin:
 		return function.Fn(args...)
@@ -282,8 +326,9 @@ func applyFunction(fn object.Object, args []object.Object) object.Object {
 
 func extendFunctionEnv(fn *object.Function, args []object.Object) *Environment {
 	env := NewEnclosedEnvironment(fn.Env.(*Environment))
-	for i, param := range fn.Parameters {
-		env.Set(param.Value, args[i])
+	params := fn.Parameters.([]*ast.VarExpression)
+	for i, param := range params {
+		env.Set(param.Name, args[i])
 	}
 	return env
 }
@@ -326,7 +371,6 @@ func evalBlockStatement(block *ast.BlockStatement, env *Environment) object.Obje
 
 func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object {
 	if node.Condition != nil {
-		// Conditional Loop (while)
 		for {
 			cond := Eval(node.Condition, env)
 			if isError(cond) {
@@ -342,18 +386,18 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 			}
 		}
 	} else {
-		// Iterator Loop
 		source := Eval(node.Source, env)
 		if isError(source) {
 			return source
 		}
 
+		iterName := node.Iterator.Name
+
 		switch src := source.(type) {
 		case *object.String:
 			for _, ch := range src.Value {
 				loopEnv := NewEnclosedEnvironment(env)
-				loopEnv.Set(node.Iterator.Value, &object.String{Value: string(ch)})
-
+				loopEnv.Set(iterName, &object.String{Value: string(ch)})
 				val := Eval(node.Body, loopEnv)
 				if val != nil && (val.Type() == object.RETURN_VALUE_OBJ || val.Type() == object.ERROR_OBJ) {
 					return val
@@ -362,8 +406,7 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 		case *object.Array:
 			for _, elem := range src.Elements {
 				loopEnv := NewEnclosedEnvironment(env)
-				loopEnv.Set(node.Iterator.Value, elem)
-
+				loopEnv.Set(iterName, elem)
 				val := Eval(node.Body, loopEnv)
 				if val != nil && (val.Type() == object.RETURN_VALUE_OBJ || val.Type() == object.ERROR_OBJ) {
 					return val
@@ -372,8 +415,7 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 		case *object.Integer:
 			for i := int64(0); i < src.Value; i++ {
 				loopEnv := NewEnclosedEnvironment(env)
-				loopEnv.Set(node.Iterator.Value, &object.Integer{Value: i})
-
+				loopEnv.Set(iterName, &object.Integer{Value: i})
 				val := Eval(node.Body, loopEnv)
 				if val != nil && (val.Type() == object.RETURN_VALUE_OBJ || val.Type() == object.ERROR_OBJ) {
 					return val
@@ -388,31 +430,36 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 
 func evalWithExpression(node *ast.WithExpression, env *Environment) object.Object {
 	newEnv := NewEnclosedEnvironment(env)
-	
+
 	for k, vExpr := range node.EnvOverrides {
 		val := Eval(vExpr, env)
 		if isError(val) {
 			return val
 		}
-		newEnv.EnvOverrides[k] = objectToString(val)
+		newEnv.SetPub(k, val, false)
 	}
 
 	return Eval(node.Body, newEnv)
 }
 
+// evalIdentifier: In the @ system, bare identifiers resolve to:
+// 1. Function builtins (len, split, etc.)
+// 2. User-defined procs stored in env (proc add(...) { ... })
+// 3. Shell commands (fallback)
 func evalIdentifier(node *ast.Identifier, env *Environment) object.Object {
-	// 1. Try Environment (Variables, Functions)
-	if val, ok := env.Get(node.Value); ok {
-		return val
-	}
-
-	// 2. Try Builtins (len, format)
+	// 1. Function builtins
 	if builtin, ok := functionBuiltins[node.Value]; ok {
 		return builtin
 	}
 
-	// 3. Try Command Execution (ls, git, etc.)
-	// If it's an unknown identifier, we treat it as a command.
+	// 2. User-defined procs/functions in environment
+	if val, ok := env.Get(node.Value); ok {
+		if val.Type() == object.FUNCTION_OBJ {
+			return val
+		}
+	}
+
+	// 3. Shell command
 	cmdNode := &ast.CommandExpression{
 		Token: node.Token,
 		Name:  node.Value,
@@ -420,31 +467,34 @@ func evalIdentifier(node *ast.Identifier, env *Environment) object.Object {
 	}
 	return evalCommandExpression(cmdNode, env)
 }
+
 func evalCommandExpression(node *ast.CommandExpression, env *Environment) object.Object {
 	var args []string
 	for _, argExpr := range node.Args {
 		var argStr string
 
-		// Handle Identifiers: Try Env, fallback to Literal Name
-		if ident, ok := argExpr.(*ast.Identifier); ok {
-			if obj, ok := env.Get(ident.Value); ok {
-				argStr = objectToString(obj)
-			} else {
-				argStr = ident.Value
+		switch arg := argExpr.(type) {
+		case *ast.VarExpression:
+			val, ok := env.Get(arg.Name)
+			if !ok {
+				return newError("undefined variable '@%s'", arg.Name)
 			}
-		} else if prefix, ok := argExpr.(*ast.PrefixExpression); ok && prefix.Operator == "-" {
-			// Handle Flags (Prefix Expressions like -m)
-			if ident, ok := prefix.Right.(*ast.Identifier); ok {
-				argStr = "-" + ident.Value
-			} else if integer, ok := prefix.Right.(*ast.IntegerLiteral); ok {
-				argStr = fmt.Sprintf("-%d", integer.Value)
-			} else {
-				val := Eval(argExpr, env)
-				if isError(val) { return val }
-				argStr = objectToString(val)
+			argStr = objectToString(val)
+		case *ast.MethodCallExpression:
+			val := evalMethodCall(arg, env)
+			if isError(val) {
+				return val
 			}
-		} else {
-			// Evaluate normally
+			argStr = objectToString(val)
+		case *ast.InterpolatedStringExpression:
+			val := evalInterpolatedString(arg, env)
+			if isError(val) {
+				return val
+			}
+			argStr = objectToString(val)
+		case *ast.StringLiteral:
+			argStr = arg.Value
+		default:
 			val := Eval(argExpr, env)
 			if isError(val) {
 				return val
@@ -452,7 +502,6 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 			argStr = objectToString(val)
 		}
 
-		// Apply Globbing if it contains wildcards
 		if strings.ContainsAny(argStr, "*?") {
 			matches, err := filepath.Glob(argStr)
 			if err == nil && len(matches) > 0 {
@@ -461,7 +510,6 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 			}
 		}
 
-		// Apply Tilde (~) expansion
 		if strings.HasPrefix(argStr, "~") {
 			if home, err := os.UserHomeDir(); err == nil {
 				argStr = filepath.Join(home, strings.TrimPrefix(argStr, "~"))
@@ -471,42 +519,39 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 		args = append(args, argStr)
 	}
 
-	// Check Special Evaluator Builtins (source, .)
 	if node.Name == "source" || node.Name == "." {
 		if len(args) != 1 {
 			fmt.Fprintf(env.Stderr, "%s: filename argument required\n", node.Name)
-			env.Set("LAST_STATUS", &object.Integer{Value: 1})
+			env.ShellSet("LAST_STATUS", &object.Integer{Value: 1})
 			return nativeBoolToBooleanObject(false)
 		}
 		return EvalSource(args[0], env)
 	}
 
-	// Check Registered Builtins (ls, cd, echo, etc.)
 	if cmd, ok := builtins.GetCommand(node.Name); ok {
-		// Use a background context for now since Eval doesn't propagate it
-		// Ideally, we'd refactor Eval to take Context
 		err := cmd.Execute(context.Background(), args, env.Stdout, env.Stderr)
 		var exitCode int64 = 0
 		if err != nil {
-			// Builtins log their own errors to errOut usually, but if not:
 			fmt.Fprintf(env.Stderr, "%s: %v\n", node.Name, err)
 			exitCode = 1
 		}
-		env.Set("LAST_STATUS", &object.Integer{Value: exitCode})
+		env.ShellSet("LAST_STATUS", &object.Integer{Value: exitCode})
 		return nativeBoolToBooleanObject(exitCode == 0)
 	}
 
-	// Fallback to System Command
 	cmd := exec.Command(node.Name, args...)
+	// As a shell, we intentionally allow running executables from the current directory
+	if errors.Is(cmd.Err, exec.ErrDot) {
+		cmd.Err = nil
+	}
 	cmd.Stdin = env.Stdin
 	cmd.Stdout = env.Stdout
 	cmd.Stderr = env.Stderr
 
-	// Inject the custom env overrides
-	overrides := env.GetAllOverrides()
-	if len(overrides) > 0 {
+	exports := env.GetExportedVars()
+	if len(exports) > 0 {
 		cmd.Env = os.Environ()
-		for k, v := range overrides {
+		for k, v := range exports {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
@@ -522,7 +567,7 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 		}
 	}
 
-	env.Set("LAST_STATUS", &object.Integer{Value: exitCode})
+	env.ShellSet("LAST_STATUS", &object.Integer{Value: exitCode})
 	return nativeBoolToBooleanObject(exitCode == 0)
 }
 
@@ -557,7 +602,6 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 	case left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ:
 		return evalIntegerInfixExpression(operator, left, right)
 	case left.Type() == object.FLOAT_OBJ || right.Type() == object.FLOAT_OBJ:
-		// Mixed float/int or float/float arithmetic
 		if isNumeric(left) && isNumeric(right) {
 			return evalFloatInfixExpression(operator, toFloat(left), toFloat(right))
 		}
@@ -671,9 +715,6 @@ func evalStringInfixExpression(operator string, left, right object.Object) objec
 		return nativeBoolToBooleanObject(leftVal < rightVal)
 	case ">":
 		return nativeBoolToBooleanObject(leftVal > rightVal)
-	case "/", "\\", ":":
-		// Support path joining and drive letters
-		return &object.String{Value: leftVal + operator + rightVal}
 	default:
 		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}

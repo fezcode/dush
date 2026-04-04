@@ -1,78 +1,169 @@
-# Dush Language Specification (v1 & Roadmap)
+# Dush Language Specification (v2)
 
 This document defines the syntax and semantics of the Dush scripting language.
 
 ## 1. Core Philosophy
-Dush is a strictly typed, C-style scripting language that treats shell commands as first-class citizens. It differentiates strictly between **Code** (variables, logic) and **Commands** (shell execution).
+Dush is a strictly typed, C-style scripting language that treats shell commands as first-class citizens. Variables use the `@` sigil for unambiguous access everywhere — in code, commands, and strings.
 
 ## 2. Basic Syntax
 - **Blocks:** Defined by curly braces `{}`.
 - **Statement Terminators:** New-lines. Semicolons are optional.
 - **Comments:** Single-line comments start with `//`.
 
-## 3. Variables and Data Types
-- **Declaration:** `let x = value`
-- **Assignment:** `x = new_value`
-- **Access:** **Strict Rule**: You MUST use `var(name)` to access the value of a data variable in expressions or command arguments.
-  - Correct: `echo var(x)`
-  - Incorrect: `echo x` (This executes the command `x`)
-- **Types:** `int`, `string`, `bool`.
-- **Planned Types:** `list`, `map`, `float`.
+## 3. Variables
 
-## 4. Control Flow
-- **Conditionals:**
-  - `if (condition) { ... }`
-  - `else { ... }`
-- **Loops:**
-  - **Conditional:** `loop (condition) { ... }`
-  - **Iterator:** `loop (item : collection) { ... }` (Currently supports iterating string characters)
+### Declaration & Assignment
+- **Simple assignment:** `@x = 10` (creates or updates variable)
+- **Let (explicit local scope):** `let @x = 10` (shadows parent scope)
+- **Constant:** `const @PI = 3.14` (immutable, cannot be reassigned)
+- **Public/Export:** `pub @KEY = "value"` (exported to child processes)
+- **Public constant:** `pub const @VER = "1.0"`
 
-## 5. Procedures
-- **Declaration:** `proc name(arg1, arg2) { ... }`
-- **Call:** `name(arg1, arg2)`
-- **Note:** Procedure names are resolvable directly, unlike data variables.
+### Access
+Variables always use the `@` sigil: `@x`, `@name`, `@LAST_STATUS`.
 
-## 6. Shell Integration
-- **Bare Words:** Any identifier that is not a keyword or defined procedure is treated as a **Command**.
-  - `git status` -> Runs `git` with argument `status`.
-  - `x` -> Runs command `x`.
-- **Arguments:**
-  - Strings: `"hello world"`
-  - Variables: `name` (Automatically resolved if it exists locally or in OS environment, otherwise treated as string literal `"name"`)
-  - Function Calls: `len("str")`
-  - Flags: `-la` (Parsed as strings)
-- **Command Chaining:**
-  - `&&`: Run next if previous succeeded (Exit Code 0).
-  - `||`: Run next if previous failed.
-- **Exit Status:**
-  - The special variable `LAST_STATUS` holds the exit code of the last run command.
+Bare identifiers (without `@`) in commands are always treated as string literals:
+- `echo hello` → prints "hello" (literal string)
+- `echo @name` → prints the value of variable `name`
 
-## 7. Built-in Functions & Commands
-- **Commands:** `ls`, `cd`, `echo`, `export`, `source`, `.`.
-- **Functions:**
-  - `len(str)`: Returns length of string.
-  - `var(name)`: Returns value of variable.
+### Data Types
+- `int`: `@x = 42`
+- `float`: `@pi = 3.14`
+- `string`: `@name = "world"`
+- `bool`: `@flag = true`
+- `array`: from `split()` and other functions
 
----
+## 4. Strings
 
-## 8. Startup Profile
-When `dush` is started as an interactive shell, it automatically looks for and executes a `~/.dushis` (Dush Interactive Shell) file in the user's home directory. You can use this file to configure environment variables, create aliases, and define procedures.
+### Double-quoted strings (interpolation)
+Variables inside double-quoted strings are automatically interpolated:
+```
+@name = "world"
+echo "hello @name"    → hello world
+```
 
----
+### Single-quoted strings (raw)
+Single-quoted strings have no interpolation:
+```
+echo 'hello @name'    → hello @name
+```
 
-## 8. Roadmap / Planned Features (Draft)
-The following features are designed but not yet implemented in v1.
+## 5. Methods
 
-- **Pipes & Redirection:**
-  - `ls | grep "go"`
-  - `echo "hello" > file.txt`
-- **Output Capture:**
-  - `let files = save(ls)` (Capture command output to variable)
-- **Globbing:**
-  - `ls *.go` (Wildcard expansion)
-- **Scoped Blocks (`with`):**
-  - `with (NODE_ENV="production") { ... }`
-- **String Library:**
-  - `split(str, sep)`, `replace(str, old, new)`, `to_upper(str)`
-- **File Library:**
-  - `exists(path)`, `is_dir(path)``exists(path)`, `is_dir(path)`
+Variables support method syntax for common operations:
+
+### String methods
+- `@s.upper()` — uppercase
+- `@s.lower()` — lowercase
+- `@s.len()` — length (returns int)
+- `@s.trim()`, `@s.trim_start()`, `@s.trim_end()` — whitespace trimming
+- `@s.contains("sub")` — substring check (returns bool)
+- `@s.starts_with("pre")`, `@s.ends_with("suf")` — prefix/suffix check
+- `@s.replace("old", "new")` — replace first occurrence
+- `@s.replace_all("old", "new")` — replace all occurrences
+- `@s.split(" ")` — split into array
+- `@s.slice(start, end)` — substring
+- `@s.or("default")` — return default if empty
+- `@s.to_string()` — identity (already a string)
+
+### Array methods
+- `@arr.len()` — length
+- `@arr.join(",")` — join elements
+- `@arr.contains("item")` — membership check
+
+### Number methods
+- `@n.abs()` — absolute value
+- `@n.to_string()` — convert to string
+
+## 6. Control Flow
+
+### Conditionals
+```
+if (@x > 0) {
+    echo "positive"
+} else {
+    echo "non-positive"
+}
+```
+
+### Loops
+- **Conditional:** `loop (@x < 10) { ... }`
+- **Iterator (array):** `loop (@item : @arr) { ... }`
+- **Iterator (range):** `loop (@i : 5) { ... }` (iterates 0..4)
+
+## 7. Procedures
+```
+proc greet(@name) {
+    echo "hello @name"
+}
+greet("world")
+```
+
+- **Declaration:** `proc name(@param1, @param2) { ... }`
+- **Proc literal:** `let @add = proc(@x, @y) { @x + @y }`
+- **Return:** `return @value`
+
+## 8. Shell Integration
+
+### Commands
+Any bare identifier that is not a keyword or known function is treated as a command:
+```
+git status
+ls -la
+echo "hello world"
+```
+
+### Command arguments
+- String literals: `echo "hello"`
+- Raw strings: `echo 'hello @name'`
+- Variables: `echo @name` (resolved)
+- Grouped expressions: `echo (@x + 1)` (evaluated)
+- Paths and flags: `echo file.txt`, `ls -la`, `cat --verbose`
+
+### Command chaining
+- `&&`: run next if previous succeeded (exit code 0)
+- `||`: run next if previous failed
+- `|`: pipe stdout to next command's stdin
+
+### Output capture
+```
+let @output = save(echo "hello")
+```
+
+### Inline environment
+```
+with (@NODE_ENV = "production") {
+    echo @NODE_ENV
+}
+```
+
+## 9. Shell Variables (read-only)
+
+These are populated by the shell and cannot be reassigned:
+- `@LAST_STATUS` — exit code of last command
+- `@SHELL_PID` — process ID of the shell
+- `@WORKING_DIR` — current working directory
+- `@HOME_DIR` — user's home directory
+- `@OS_NAME` — operating system name
+- `@USER_NAME` — current user
+- `@SHELL_VERSION` — dush version string
+
+## 10. Built-in Functions
+- `len(str)` — string/array length
+- `split(str, sep)` — split string into array
+- `replace(str, old, new)` — replace in string
+- `to_upper(str)` — uppercase string
+- `to_lower(str)` — lowercase string
+- `type(val)` — type name as string
+- `save(cmd)` — capture command output
+- `exists(path)` — file/directory exists check
+- `is_dir(path)` — directory check
+
+## 11. Startup Profile
+When `dush` is started as an interactive shell, it automatically looks for and executes a `~/.dushis` (Dush Interactive Shell) file in the user's home directory.
+
+## 12. Roadmap
+- Pipes & redirection: `ls | grep "go"`, `echo "hello" > file.txt`
+- Globbing: `ls *.go`
+- Map type: `@m = {"key": "value"}`
+- Error handling patterns

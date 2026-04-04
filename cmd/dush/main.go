@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"dush/internal/evaluator"
 	"dush/internal/repl"
 )
 
@@ -29,7 +30,10 @@ func main() {
 	}
 
 	// Bootstrap the application
-	Bootstrap() // Call the bootstrap function without arguments
+	Bootstrap()
+
+	// Set shell version for environment variables
+	evaluator.ShellVersion = Version
 
 	fmt.Printf("Welcome to dush v%s!\n", Version)
 	fmt.Println("Type 'exit' or 'quit' to exit.")

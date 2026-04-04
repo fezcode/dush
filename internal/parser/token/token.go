@@ -3,8 +3,9 @@ package token
 type TokenType string
 
 type Token struct {
-	Type    TokenType
-	Literal string
+	Type            TokenType
+	Literal         string
+	PrecededBySpace bool
 }
 
 const (
@@ -12,10 +13,11 @@ const (
 	EOF     = "EOF"
 
 	// Identifiers + literals
-	IDENT  = "IDENT"  // add, foobar, x, y, ...
-	INT    = "INT"    // 1343456
-	FLOAT  = "FLOAT"  // 12.34
-	STRING = "STRING" // "foobar"
+	IDENT      = "IDENT"      // add, foobar, x, y, ...
+	INT        = "INT"        // 1343456
+	FLOAT      = "FLOAT"      // 12.34
+	STRING     = "STRING"     // "foobar"
+	RAW_STRING = "RAW_STRING" // 'foobar' (no interpolation)
 
 	// Operators
 	ASSIGN   = "="
@@ -36,14 +38,19 @@ const (
 
 	// Shell Operators
 	PIPE     = "|"
-	REDIRECT = ">" // Same as GT, context matters, but lexer just sees symbols
+	REDIRECT = ">" // Same as GT, context matters
 	APPEND   = ">>"
 	INPUT    = "<" // Same as LT
+
+	// Variable sigil
+	AT = "@"
 
 	// Delimiters
 	COMMA     = ","
 	SEMICOLON = ";"
 	COLON     = ":"
+	DOT       = "."
+	BACKSLASH = "\\"
 
 	LPAREN   = "("
 	RPAREN   = ")"
@@ -63,7 +70,10 @@ const (
 	RETURN = "RETURN"
 	LOOP   = "LOOP"
 	WITH   = "WITH"
-	SAVE   = "SAVE"
+	PUB    = "PUB"
+
+	// Legacy (kept as constant, removed from keywords map)
+	SAVE = "SAVE"
 )
 
 var keywords = map[string]TokenType{
@@ -77,7 +87,7 @@ var keywords = map[string]TokenType{
 	"return": RETURN,
 	"loop":   LOOP,
 	"with":   WITH,
-	"save":   SAVE,
+	"pub":    PUB,
 }
 
 func LookupIdent(ident string) TokenType {

@@ -93,90 +93,11 @@ func TestIfElseExpressions(t *testing.T) {
 }
 
 func TestProcDeclarations(t *testing.T) {
-	input := `proc add(x) { x + 2 }`
+	input := `proc add(@x) { @x + 2 }`
 
 	evaluated := testEval(input)
-	// Proc statement currently returns nil (stores in env)
 	if evaluated != nil && evaluated.Type() != object.NULL_OBJ {
 		t.Fatalf("object is not NULL. got=%T (%+v)", evaluated, evaluated)
-	}
-}
-
-func testEval(input string) object.Object {
-	l := lexer.New(input)
-	p := parser.New(l)
-	program := p.ParseProgram()
-	env := NewEnvironment()
-
-	return Eval(program, env)
-}
-
-func testIntegerObject(t *testing.T, obj object.Object, expected int64) bool {
-	result, ok := obj.(*object.Integer)
-	if !ok {
-		t.Errorf("object is not Integer. got=%T (%+v)", obj, obj)
-		return false
-	}
-	if result.Value != expected {
-		t.Errorf("object has wrong value. got=%d, want=%d",
-			result.Value, expected)
-		return false
-	}
-	return true
-}
-
-func testBooleanObject(t *testing.T, obj object.Object, expected bool) bool {
-	result, ok := obj.(*object.Boolean)
-	if !ok {
-		t.Errorf("object is not Boolean. got=%T (%+v)", obj, obj)
-		return false
-	}
-	if result.Value != expected {
-		t.Errorf("object has wrong value. got=%t, want=%t",
-			result.Value, expected)
-		return false
-	}
-	return true
-}
-
-func testNullObject(t *testing.T, obj object.Object) bool {
-	if obj != NULL {
-		t.Errorf("object is not NULL. got=%T (%+v)", obj, obj)
-		return false
-	}
-	return true
-}
-
-func TestStringBuiltinFunctions(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected interface{}
-	}{
-		{`len("hello")`, 5},
-		{`to_upper("hello")`, "HELLO"},
-		{`replace("hello world", "world", "dush")`, "hello dush"},
-	}
-
-	for _, tt := range tests {
-		evaluated := testEval(tt.input)
-		switch expected := tt.expected.(type) {
-		case int:
-			testIntegerObject(t, evaluated, int64(expected))
-		case string:
-			errObj, ok := evaluated.(*object.Error)
-			if ok {
-				t.Errorf("got error object: %s", errObj.Message)
-				continue
-			}
-			strObj, ok := evaluated.(*object.String)
-			if !ok {
-				t.Errorf("object is not String. got=%T (%+v)", evaluated, evaluated)
-				continue
-			}
-			if strObj.Value != expected {
-				t.Errorf("wrong string value. expected=%q, got=%q", expected, strObj.Value)
-			}
-		}
 	}
 }
 
@@ -185,9 +106,9 @@ func TestReturnStatements(t *testing.T) {
 		input    string
 		expected int64
 	}{
-		{"proc add(x, y) { return x + y }; add(2, 3)", 5},
-		{"proc early(x) { if (x > 0) { return x }; return 0 }; early(5)", 5},
-		{"proc early(x) { if (x > 0) { return x }; return 0 }; early(-1)", 0},
+		{"proc add(@x, @y) { return @x + @y }\nadd(2, 3)", 5},
+		{"proc early(@x) { if (@x > 0) { return @x }\nreturn 0 }\nearly(5)", 5},
+		{"proc early(@x) { if (@x > 0) { return @x }\nreturn 0 }\nearly(-1)", 0},
 	}
 
 	for _, tt := range tests {
@@ -207,7 +128,6 @@ func TestFloatExpressions(t *testing.T) {
 		{"10.0 - 3.5", 6.5},
 		{"2.0 * 3.0", 6.0},
 		{"7.0 / 2.0", 3.5},
-		// Mixed int/float
 		{"1 + 2.5", 3.5},
 		{"10 * 0.5", 5.0},
 	}
@@ -260,8 +180,187 @@ func TestStringComparison(t *testing.T) {
 	}
 }
 
+func TestStringBuiltinFunctions(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{`len("hello")`, 5},
+		{`to_upper("hello")`, "HELLO"},
+		{`replace("hello world", "world", "dush")`, "hello dush"},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		switch expected := tt.expected.(type) {
+		case int:
+			testIntegerObject(t, evaluated, int64(expected))
+		case string:
+			errObj, ok := evaluated.(*object.Error)
+			if ok {
+				t.Errorf("got error object: %s", errObj.Message)
+				continue
+			}
+			strObj, ok := evaluated.(*object.String)
+			if !ok {
+				t.Errorf("object is not String. got=%T (%+v)", evaluated, evaluated)
+				continue
+			}
+			if strObj.Value != expected {
+				t.Errorf("wrong string value. expected=%q, got=%q", expected, strObj.Value)
+			}
+		}
+	}
+}
+
+// === @ Variable System Tests ===
+
+func TestVarAssignment(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"@x = 10\n@x", 10},
+		{"@x = 5\n@x + 3", 8},
+		{"@x = 10\n@x = 20\n@x", 20},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testIntegerObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestLetWithAtSyntax(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"let @x = 10\n@x", 10},
+		{"let @x = 5\nlet @y = 10\n@x + @y", 15},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testIntegerObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestConstImmutability(t *testing.T) {
+	input := "const @PI = 3\n@PI = 0"
+	evaluated := testEval(input)
+	errObj, ok := evaluated.(*object.Error)
+	if !ok {
+		t.Fatalf("expected Error, got %T (%+v)", evaluated, evaluated)
+	}
+	if errObj.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+}
+
+func TestPubExport(t *testing.T) {
+	input := `pub @KEY = "abc123"`
+	evaluated := testEval(input)
+	if evaluated != nil && evaluated.Type() == object.ERROR_OBJ {
+		t.Fatalf("unexpected error: %s", evaluated.Inspect())
+	}
+}
+
+func TestStringInterpolation(t *testing.T) {
+	input := "@name = \"world\"\n\"hello @name\""
+	evaluated := testEval(input)
+	strObj, ok := evaluated.(*object.String)
+	if !ok {
+		errObj, isErr := evaluated.(*object.Error)
+		if isErr {
+			t.Fatalf("got error: %s", errObj.Message)
+		}
+		t.Fatalf("expected String, got %T (%+v)", evaluated, evaluated)
+	}
+	if strObj.Value != "hello world" {
+		t.Errorf("expected %q, got %q", "hello world", strObj.Value)
+	}
+}
+
+func TestRawStringNoInterpolation(t *testing.T) {
+	input := "@name = \"world\"\n'hello @name'"
+	evaluated := testEval(input)
+	strObj, ok := evaluated.(*object.String)
+	if !ok {
+		t.Fatalf("expected String, got %T (%+v)", evaluated, evaluated)
+	}
+	if strObj.Value != "hello @name" {
+		t.Errorf("expected %q, got %q", "hello @name", strObj.Value)
+	}
+}
+
+func TestMethodSyntax(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`@x = "hello"; @x.upper()`, "HELLO"},
+		{`@x = "HELLO"; @x.lower()`, "hello"},
+		{`@x = "  hello  "; @x.trim()`, "hello"},
+		{`@x = "hello"; @x.replace("l", "r")`, "herlo"},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		strObj, ok := evaluated.(*object.String)
+		if !ok {
+			errObj, isErr := evaluated.(*object.Error)
+			if isErr {
+				t.Errorf("input %q: got error: %s", tt.input, errObj.Message)
+				continue
+			}
+			t.Errorf("input %q: expected String, got %T (%+v)", tt.input, evaluated, evaluated)
+			continue
+		}
+		if strObj.Value != tt.expected {
+			t.Errorf("input %q: expected %q, got %q", tt.input, tt.expected, strObj.Value)
+		}
+	}
+}
+
+func TestMethodLen(t *testing.T) {
+	input := `@x = "hello"; @x.len()`
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 5)
+}
+
+func TestShellVarsReadOnly(t *testing.T) {
+	input := `@LAST_STATUS = 99`
+	evaluated := testEval(input)
+	errObj, ok := evaluated.(*object.Error)
+	if !ok {
+		t.Fatalf("expected Error for shell var write, got %T (%+v)", evaluated, evaluated)
+	}
+	if errObj.Message == "" {
+		t.Error("expected non-empty error message")
+	}
+}
+
+func TestProcWithAtParams(t *testing.T) {
+	input := "proc add(@a, @b) { return @a + @b }\nadd(1, 2)"
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 3)
+}
+
+func TestProcLiteral(t *testing.T) {
+	input := "let @add = proc(@x, @y) { @x + @y }\n@add(3, 4)"
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 7)
+}
+
+func TestLoopWithAtIterator(t *testing.T) {
+	input := "@sum = 0\nloop (@i : 5) { @sum = @sum + @i }\n@sum"
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 10) // 0+1+2+3+4 = 10
+}
+
 func TestArrayIteration(t *testing.T) {
-	input := `let arr = split("a,b,c", ","); let result = ""; loop (x : arr) { result = result + x }; result`
+	input := "let @arr = split(\"a,b,c\", \",\")\nlet @result = \"\"\nloop (@x : @arr) { @result = @result + @x }\n@result"
 	evaluated := testEval(input)
 	strObj, ok := evaluated.(*object.String)
 	if !ok {
@@ -276,12 +375,6 @@ func TestArrayLen(t *testing.T) {
 	input := `len(split("a,b,c", ","))`
 	evaluated := testEval(input)
 	testIntegerObject(t, evaluated, 3)
-}
-
-func TestProcLiteral(t *testing.T) {
-	input := `let add = proc(x, y) { x + y }; add(3, 4)`
-	evaluated := testEval(input)
-	testIntegerObject(t, evaluated, 7)
 }
 
 func TestTypeBuiltin(t *testing.T) {
@@ -308,12 +401,6 @@ func TestTypeBuiltin(t *testing.T) {
 	}
 }
 
-func TestIntegerLoop(t *testing.T) {
-	input := `let sum = 0; loop (i : 5) { sum = sum + i }; sum`
-	evaluated := testEval(input)
-	testIntegerObject(t, evaluated, 10) // 0+1+2+3+4 = 10
-}
-
 func TestFileBuiltinFunctions(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -329,4 +416,49 @@ func TestFileBuiltinFunctions(t *testing.T) {
 		evaluated := testEval(tt.input)
 		testBooleanObject(t, evaluated, tt.expected)
 	}
+}
+
+// === Helpers ===
+
+func testEval(input string) object.Object {
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	env := NewEnvironment()
+
+	return Eval(program, env)
+}
+
+func testIntegerObject(t *testing.T, obj object.Object, expected int64) bool {
+	result, ok := obj.(*object.Integer)
+	if !ok {
+		t.Errorf("object is not Integer. got=%T (%+v)", obj, obj)
+		return false
+	}
+	if result.Value != expected {
+		t.Errorf("object has wrong value. got=%d, want=%d", result.Value, expected)
+		return false
+	}
+	return true
+}
+
+func testBooleanObject(t *testing.T, obj object.Object, expected bool) bool {
+	result, ok := obj.(*object.Boolean)
+	if !ok {
+		t.Errorf("object is not Boolean. got=%T (%+v)", obj, obj)
+		return false
+	}
+	if result.Value != expected {
+		t.Errorf("object has wrong value. got=%t, want=%t", result.Value, expected)
+		return false
+	}
+	return true
+}
+
+func testNullObject(t *testing.T, obj object.Object) bool {
+	if obj != NULL {
+		t.Errorf("object is not NULL. got=%T (%+v)", obj, obj)
+		return false
+	}
+	return true
 }
