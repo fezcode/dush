@@ -12,8 +12,12 @@ type HelpCommand struct{}
 
 // Execute prints a list of all available built-in commands.
 func (c *HelpCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprintln(out, "Usage: help\nList all available built-in commands. Run any command with -h for details.")
+		return nil
+	}
 	if len(args) > 0 {
-		return fmt.Errorf("help command does not accept arguments")
+		return fmt.Errorf("help: too many arguments")
 	}
 
 	commandNames := ListBuiltins()

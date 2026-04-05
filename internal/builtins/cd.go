@@ -14,6 +14,11 @@ type CDCommand struct{}
 
 // Execute changes the shell's current working directory.
 func (c *CDCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprintln(out, "Usage: cd [directory]\nChange the current working directory.\nWith no arguments, changes to the home directory.")
+		return nil
+	}
+
 	appInstance := app.GetApp()
 
 	var targetPath string

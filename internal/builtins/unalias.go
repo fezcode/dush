@@ -33,6 +33,9 @@ func (c *UnaliasCommand) Execute(ctx context.Context, args []string, out io.Writ
 	filteredArgs := []string{}
 	for _, arg := range args {
 		switch arg {
+		case "-h", "--help":
+			fmt.Fprintln(out, "Usage: unalias <name>\nRemove an alias definition.")
+			return nil
 		case "-s", "--save":
 			// ignored, aliases persist via ~/.dush/is
 		default:

@@ -11,6 +11,10 @@ type ClearCommand struct{}
 
 // Execute clears the terminal screen using ANSI escape codes.
 func (c *ClearCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprintln(out, "Usage: clear\nClear the terminal screen.")
+		return nil
+	}
 	if len(args) > 0 {
 		return fmt.Errorf("clear: too many arguments")
 	}

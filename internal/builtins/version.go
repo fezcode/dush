@@ -13,8 +13,12 @@ type VersionCommand struct{}
 
 // Execute prints the version information of the application.
 func (c *VersionCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprintln(out, "Usage: version\nPrint the dush version, commit hash, and build date.")
+		return nil
+	}
 	if len(args) > 0 {
-		return fmt.Errorf("version command does not accept arguments")
+		return fmt.Errorf("version: too many arguments")
 	}
 
 	fmt.Fprintf(out, "Dush Version: %s\n", buildinfo.Version)

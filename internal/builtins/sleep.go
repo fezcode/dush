@@ -11,6 +11,10 @@ import (
 type SleepCommand struct{}
 
 func (c *SleepCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprintln(out, "Usage: sleep <duration>\nPause for the specified duration.\n\nDuration can be a number of seconds (e.g., 5, 1.5) or a Go duration string (e.g., 10s, 2m, 1h30m).")
+		return nil
+	}
 	if len(args) != 1 {
 		return fmt.Errorf("usage: sleep <duration>")
 	}

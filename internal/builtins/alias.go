@@ -39,6 +39,9 @@ func (c *AliasCommand) Execute(ctx context.Context, args []string, out io.Writer
 	filteredArgs := []string{}
 	for _, arg := range args {
 		switch arg {
+		case "-h", "--help":
+			fmt.Fprintln(out, "Usage: alias [name[=value]]\nDefine or display aliases.\n\nOptions:\n  -p, --print   Print all aliases\n  -s, --save    Save alias persistently\n  -h, --help    Show this help\n\nExamples:\n  alias                    List all aliases\n  alias ll='ls -la'        Set an alias\n  alias ll                 Show a specific alias")
+			return nil
 		case "-p", "--print":
 			printAll = true
 		case "-s", "--save":
