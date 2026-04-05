@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -99,57 +100,74 @@ func (le *lineEditor) autoComplete(line string, pos int) (string, int, bool) {
 			return matches[0] + " " + after, len(matches[0]) + 1, true
 		}
 
-		// Multiple: complete to common prefix, cache for cycling
-		common := commonPrefix(matches)
-
-		// Cache cycle state (command matches are plain strings, no quoting needed)
+		// Multiple matches: cycle through real matches starting from the first
 		le.tabPrev = ""
 		le.tabAfter = after
 		le.tabQuoted = false
-		le.tabIndex = -1
-		// Store full completions for cycling
+		le.tabIndex = 0
 		le.tabMatches = make([]string, len(matches))
 		for i, m := range matches {
 			le.tabMatches[i] = m + " "
 		}
 
-		result := common + after
+		choice := le.tabMatches[0]
+		result := choice + after
 		le.lastTabLine = result
-		le.lastTabPos = len(common)
-		return result, len(common), true
+		le.lastTabPos = len(choice)
+		return result, len(choice), true
 	}
 
 	// File path completion — extract last argument respecting quotes
 	rawArg, argStart, quoted := extractLastArg(before)
 
-	dir := "."
+	// Determine the separator style the user typed (default to OS separator)
+	sep := string(filepath.Separator)
+	if strings.Contains(rawArg, "/") {
+		sep = "/"
+	}
+
+	dir := ""
 	prefix := rawArg
 	if rawArg != "" {
-		dir = filepath.Dir(rawArg)
-		prefix = filepath.Base(rawArg)
-		if strings.HasSuffix(rawArg, string(filepath.Separator)) || strings.HasSuffix(rawArg, "/") {
+		if strings.HasSuffix(rawArg, "/") || strings.HasSuffix(rawArg, string(filepath.Separator)) {
 			dir = rawArg
 			prefix = ""
+		} else if sepIdx := strings.LastIndexAny(rawArg, "/\\"); sepIdx >= 0 {
+			dir = rawArg[:sepIdx+1]
+			prefix = rawArg[sepIdx+1:]
 		}
 	}
 
+	// Resolve absolute path for ReadDir
+	lookupDir := dir
+	if lookupDir == "" {
+		lookupDir = "."
+	}
 	appInstance := app.GetApp()
-	absDir := dir
-	if !filepath.IsAbs(dir) {
-		absDir = filepath.Join(appInstance.GetCurrentDir(), dir)
+	if !filepath.IsAbs(lookupDir) {
+		lookupDir = filepath.Join(appInstance.GetCurrentDir(), lookupDir)
 	}
 
-	entries, err := os.ReadDir(absDir)
+	entries, err := os.ReadDir(lookupDir)
 	if err != nil {
 		return "", 0, false
 	}
 
+	// Case-insensitive matching on Windows, case-sensitive elsewhere
+	caseFold := runtime.GOOS == "windows"
+
 	matches := []string{}
 	for _, entry := range entries {
 		name := entry.Name()
-		if strings.HasPrefix(name, prefix) {
+		matched := false
+		if caseFold {
+			matched = strings.HasPrefix(strings.ToLower(name), strings.ToLower(prefix))
+		} else {
+			matched = strings.HasPrefix(name, prefix)
+		}
+		if matched {
 			if entry.IsDir() {
-				name += string(filepath.Separator)
+				name += sep
 			}
 			matches = append(matches, name)
 		}
@@ -163,32 +181,33 @@ func (le *lineEditor) autoComplete(line string, pos int) (string, int, bool) {
 
 	prev := before[:argStart]
 
+	// joinPath concatenates dir + name without cleaning (preserves trailing sep)
+	joinPath := func(name string) string {
+		return dir + name
+	}
+
 	if len(matches) == 1 {
-		completed := filepath.Join(dir, matches[0])
+		completed := joinPath(matches[0])
 		formatted := quoteIfNeeded(completed, quoted)
 		newLine := prev + formatted + after
 		return newLine, len(prev+formatted), true
 	}
 
-	// Multiple matches: complete to common prefix, cache for cycling
-	common := commonPrefix(matches)
-	completed := filepath.Join(dir, common)
-	formatted := quoteIfNeeded(completed, quoted)
-
-	// Cache cycle state
+	// Multiple matches: cycle through real matches starting from the first
 	le.tabPrev = prev
 	le.tabAfter = after
 	le.tabQuoted = quoted
-	le.tabIndex = -1
+	le.tabIndex = 0
 	le.tabMatches = make([]string, len(matches))
 	for i, m := range matches {
-		le.tabMatches[i] = quoteIfNeeded(filepath.Join(dir, m), quoted)
+		le.tabMatches[i] = quoteIfNeeded(joinPath(m), quoted)
 	}
 
-	result := prev + formatted + after
+	choice := le.tabMatches[0]
+	result := prev + choice + after
 	le.lastTabLine = result
-	le.lastTabPos = len(prev + formatted)
-	return result, len(prev + formatted), true
+	le.lastTabPos = len(prev + choice)
+	return result, len(prev + choice), true
 }
 
 func (le *lineEditor) cycleCompletion() (string, int, bool) {
@@ -204,28 +223,6 @@ func (le *lineEditor) cycleCompletion() (string, int, bool) {
 	le.lastTabLine = result
 	le.lastTabPos = newPos
 	return result, newPos, true
-}
-
-func commonPrefix(strs []string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	common := strs[0]
-	for _, s := range strs[1:] {
-		for i := 0; i < len(common) && i < len(s); i++ {
-			if common[i] != s[i] {
-				common = common[:i]
-				break
-			}
-		}
-		if len(s) < len(common) {
-			common = common[:len(s)]
-		}
-		if len(common) == 0 {
-			break
-		}
-	}
-	return common
 }
 
 // extractLastArg extracts the last argument from the line, respecting quotes.
@@ -283,24 +280,23 @@ func extractLastArg(before string) (arg string, start int, quoted bool) {
 }
 
 // quoteIfNeeded wraps a completed path in double quotes if it contains spaces.
-// If the arg was already quoted (open quote), it keeps the quote style and closes it
-// only for single-match completions (trailing entries handled by caller).
 func quoteIfNeeded(completed string, alreadyQuoted bool) string {
-	if alreadyQuoted {
-		// Caller started with a quote — keep content unquoted (the open quote is in prev)
-		// Add closing quote only if this is a final completion (not a dir prefix)
-		if strings.HasSuffix(completed, string(filepath.Separator)) || strings.HasSuffix(completed, "/") {
-			return "\"" + completed
-		}
-		return "\"" + completed + "\""
+	needsQuote := alreadyQuoted || strings.Contains(completed, " ")
+	if !needsQuote {
+		return completed
 	}
-	if strings.Contains(completed, " ") {
-		if strings.HasSuffix(completed, string(filepath.Separator)) || strings.HasSuffix(completed, "/") {
-			return "\"" + completed
-		}
-		return "\"" + completed + "\""
+
+	// Normalize backslashes to forward slashes inside quotes so the closing
+	// quote isn't confused with a trailing backslash (e.g. "my dir\" is wrong).
+	inner := strings.ReplaceAll(completed, "\\", "/")
+
+	isDir := strings.HasSuffix(inner, "/")
+	if isDir {
+		// Directory: close the quote, then append separator so user can keep tabbing
+		// e.g. "my dir"/  — quoted name, slash outside for continued completion
+		return "\"" + strings.TrimRight(inner, "/") + "\"/"
 	}
-	return completed
+	return "\"" + inner + "\""
 }
 
 // Start starts the Read-Eval-Print Loop.
@@ -309,6 +305,18 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	// Create a context for the entire REPL lifecycle, cancelled on SIGTERM/SIGHUP
 	replCtx, replCancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGHUP)
 	defer replCancel() // Ensure this context is cancelled when Start returns
+
+	// Intercept SIGINT (Ctrl+C) so Go's default handler doesn't kill the process.
+	// The term package reads 0x03 and returns io.EOF which we handle in the loop.
+	sigintCh := make(chan os.Signal, 8)
+	signal.Notify(sigintCh, os.Interrupt)
+	defer signal.Stop(sigintCh)
+	go func() {
+		for range sigintCh {
+			// Continuously drain — prevents channel backup which would
+			// cause Go to fall back to the default (terminate) behavior.
+		}
+	}()
 
 	// Load history at the start of the REPL
 	utils.LoadHistory()
@@ -355,28 +363,40 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	var t *term.Terminal
 	var le *lineEditor
 
-	if isTerminal {
-		oldState, err = term.MakeRaw(int(os.Stdin.Fd()))
-		if err != nil {
+	// initTerminal creates (or recreates) the terminal in raw mode.
+	// Called at startup and after Ctrl+C to reset the terminal state.
+	autoCompleteCb := func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
+		if key == '\t' {
+			return le.autoComplete(line, pos)
+		}
+		return "", 0, false
+	}
+	initTerminal := func() {
+		if oldState != nil {
+			term.Restore(int(os.Stdin.Fd()), oldState)
+			oldState = nil
+		}
+		var rawErr error
+		oldState, rawErr = term.MakeRaw(int(os.Stdin.Fd()))
+		if rawErr != nil {
 			isTerminal = false
-		} else {
-			defer term.Restore(int(os.Stdin.Fd()), oldState)
-			t = term.NewTerminal(terminalIO{in, out}, "")
-			le = &lineEditor{}
-			t.AutoCompleteCallback = func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
-				if key == '\t' {
-					return le.autoComplete(line, pos)
-				}
-				return "", 0, false
-			}
+			return
+		}
+		t = term.NewTerminal(terminalIO{in, out}, "")
+		if w, h, sizeErr := term.GetSize(int(os.Stdout.Fd())); sizeErr == nil {
+			t.SetSize(w, h)
+		}
+		t.AutoCompleteCallback = autoCompleteCb
+		for _, h := range utils.GetHistory() {
+			t.History.Add(h)
+		}
+	}
 
-			// Pre-fill history for arrow keys navigation
-			// The term package's default History records the last 100 lines.
-			for _, h := range utils.GetHistory() {
-				if t.History != nil {
-					t.History.Add(h)
-				}
-			}
+	if isTerminal {
+		le = &lineEditor{}
+		initTerminal()
+		if oldState != nil {
+			defer term.Restore(int(os.Stdin.Fd()), oldState)
 		}
 	}
 
@@ -394,6 +414,13 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 			return
 		default:
 			// Continue
+		}
+
+		// Update terminal size on each iteration (handles window resizes)
+		if isTerminal && t != nil {
+			if w, h, sizeErr := term.GetSize(int(os.Stdout.Fd())); sizeErr == nil {
+				t.SetSize(w, h)
+			}
 		}
 
 		currentCWD := appInstance.GetCurrentDir()
@@ -422,9 +449,13 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 			line, err = t.ReadLine()
 			if err != nil {
 				if err == io.EOF {
-					term.Restore(int(os.Stdin.Fd()), oldState)
-					fmt.Fprintf(out, "\r\nExiting dush REPL.\n")
-					return
+					// Ctrl+C or Ctrl+D: print red [EOF], clear buffer, new prompt.
+					// Recreate terminal to reset its internal state (it gets stuck
+					// returning EOF forever after the first one).
+					fmt.Fprintf(out, " %s[EOF]%s\r\n", utils.ColorRed, utils.ColorReset)
+					commandBuffer = ""
+					initTerminal()
+					continue
 				}
 				// Other errors...
 				continue
