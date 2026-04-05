@@ -159,6 +159,25 @@ func (e *Environment) SetConst(name string, val object.Object) string {
 	return ""
 }
 
+// Delete removes a variable from the environment.
+// Returns an error string if the variable is const/shell-managed, or empty on success.
+func (e *Environment) Delete(name string) string {
+	if v, ok := e.store[name]; ok {
+		if v.Const {
+			return fmt.Sprintf("cannot unset const variable '%s'", name)
+		}
+		if e.shellVars[name] {
+			return fmt.Sprintf("cannot unset shell variable '%s'", name)
+		}
+		delete(e.store, name)
+		return ""
+	}
+	if e.outer != nil {
+		return e.outer.Delete(name)
+	}
+	return ""
+}
+
 // SetPub creates an exported variable in the current scope.
 func (e *Environment) SetPub(name string, val object.Object, isConst bool) string {
 	if v, ok := e.store[name]; ok {

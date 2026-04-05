@@ -108,9 +108,84 @@ func (c *CleanJobsCommand) Execute(ctx context.Context, args []string, out io.Wr
 	return nil
 }
 
+// WaitCommand waits for background jobs to finish.
+type WaitCommand struct{}
+
+func (c *WaitCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
+	if jobLister == nil {
+		return fmt.Errorf("no job manager available")
+	}
+
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			fmt.Fprintln(out, "Usage: wait [job-id...]\nWait for background jobs to finish. With no arguments, waits for all running jobs.")
+			return nil
+		}
+	}
+
+	if len(args) == 0 {
+		// Wait for all running jobs
+		jobs := jobLister.ListJobs()
+		for _, j := range jobs {
+			if j.Status == "running" {
+				if err := jobLister.WaitJob(j.ID); err != nil {
+					fmt.Fprintf(errOut, "wait: job %d: %v\n", j.ID, err)
+				}
+			}
+		}
+		return nil
+	}
+
+	for _, arg := range args {
+		id := 0
+		_, err := fmt.Sscanf(arg, "%d", &id)
+		if err != nil {
+			fmt.Fprintf(errOut, "wait: invalid job id: %s\n", arg)
+			continue
+		}
+		if err := jobLister.WaitJob(id); err != nil {
+			fmt.Fprintf(errOut, "wait: %v\n", err)
+		}
+	}
+	return nil
+}
+
+// DisownCommand removes a job from the shell's job table.
+type DisownCommand struct{}
+
+func (c *DisownCommand) Execute(ctx context.Context, args []string, out io.Writer, errOut io.Writer) error {
+	if jobLister == nil {
+		return fmt.Errorf("no job manager available")
+	}
+
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			fmt.Fprintln(out, "Usage: disown <job-id>\nRemove a job from the shell's job table.")
+			return nil
+		}
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("usage: disown <job-id>")
+	}
+
+	id := 0
+	_, err := fmt.Sscanf(args[0], "%d", &id)
+	if err != nil {
+		return fmt.Errorf("invalid job id: %s", args[0])
+	}
+
+	if !jobLister.RemoveJob(id) {
+		return fmt.Errorf("disown: no such job: %d", id)
+	}
+	return nil
+}
+
 func init() {
 	RegisterBuiltin("jobs", &JobsCommand{})
 	RegisterBuiltin("fg", &FgCommand{})
 	RegisterBuiltin("killjob", &KillJobCommand{})
 	RegisterBuiltin("cleanjobs", &CleanJobsCommand{})
+	RegisterBuiltin("wait", &WaitCommand{})
+	RegisterBuiltin("disown", &DisownCommand{})
 }

@@ -1,6 +1,7 @@
 package evaluator
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"dush/internal/builtins"
@@ -532,6 +533,14 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 		return EvalSource(args[0], env)
 	}
 
+	if node.Name == "read" {
+		return evalReadCommand(args, env)
+	}
+
+	if node.Name == "unset" {
+		return evalUnsetCommand(args, env)
+	}
+
 	if cmd, ok := builtins.GetCommand(node.Name); ok {
 		err := cmd.Execute(context.Background(), args, env.Stdout, env.Stderr)
 		var exitCode int64 = 0
@@ -952,4 +961,72 @@ func nativeBoolToBooleanObject(input bool) *object.Boolean {
 		return TRUE
 	}
 	return FALSE
+}
+
+// evalReadCommand reads a line from stdin and assigns words to @ variables.
+// Usage: read @var1 @var2 ...
+// If fewer variables than words, the last variable gets the remaining words.
+// If no variables given, stores the line in @REPLY.
+func evalReadCommand(args []string, env *Environment) object.Object {
+	reader := bufio.NewReader(env.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && len(line) == 0 {
+		env.ShellSet("LAST_STATUS", &object.Integer{Value: 1})
+		return nativeBoolToBooleanObject(false)
+	}
+	line = strings.TrimRight(line, "\r\n")
+
+	// Strip @ prefix from variable names
+	varNames := make([]string, 0, len(args))
+	for _, a := range args {
+		varNames = append(varNames, strings.TrimPrefix(a, "@"))
+	}
+
+	if len(varNames) == 0 {
+		env.Set("REPLY", &object.String{Value: line})
+		env.ShellSet("LAST_STATUS", &object.Integer{Value: 0})
+		return nativeBoolToBooleanObject(true)
+	}
+
+	words := strings.Fields(line)
+
+	for i, name := range varNames {
+		if i == len(varNames)-1 {
+			// Last variable gets the rest
+			if i < len(words) {
+				env.Set(name, &object.String{Value: strings.Join(words[i:], " ")})
+			} else {
+				env.Set(name, &object.String{Value: ""})
+			}
+		} else if i < len(words) {
+			env.Set(name, &object.String{Value: words[i]})
+		} else {
+			env.Set(name, &object.String{Value: ""})
+		}
+	}
+
+	env.ShellSet("LAST_STATUS", &object.Integer{Value: 0})
+	return nativeBoolToBooleanObject(true)
+}
+
+// evalUnsetCommand removes variables from the environment.
+// Usage: unset @var1 @var2 ...
+func evalUnsetCommand(args []string, env *Environment) object.Object {
+	if len(args) == 0 {
+		fmt.Fprintln(env.Stderr, "unset: usage: unset @name...")
+		env.ShellSet("LAST_STATUS", &object.Integer{Value: 1})
+		return nativeBoolToBooleanObject(false)
+	}
+
+	exitCode := int64(0)
+	for _, a := range args {
+		name := strings.TrimPrefix(a, "@")
+		if errMsg := env.Delete(name); errMsg != "" {
+			fmt.Fprintf(env.Stderr, "unset: %s\n", errMsg)
+			exitCode = 1
+		}
+	}
+
+	env.ShellSet("LAST_STATUS", &object.Integer{Value: exitCode})
+	return nativeBoolToBooleanObject(exitCode == 0)
 }
