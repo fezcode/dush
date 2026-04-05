@@ -483,22 +483,6 @@ func (c *LsCommand) Execute(ctx context.Context, args []string, out io.Writer, e
 	}
 
 	if opts.LongFormat {
-		// Table header
-		if opts.Header {
-			header := fmt.Sprintf(
-				"%s  %s  %s  %s  %s  %s  %s  %s",
-				utils.Colorize("Permissions", utils.StyleBold+utils.StyleUnderline),
-				utils.Colorize("Size", utils.StyleBold+utils.StyleUnderline),
-				utils.Colorize("User", utils.StyleBold+utils.StyleUnderline),
-				utils.Colorize("Group", utils.StyleBold+utils.StyleUnderline),
-				utils.Colorize("Created", utils.StyleBold+utils.StyleUnderline),
-				utils.Colorize("Modified", utils.StyleBold+utils.StyleUnderline),
-				utils.Colorize("", ""), // icon placeholder
-				utils.Colorize("Name", utils.StyleBold+utils.StyleUnderline),
-			)
-			fmt.Fprintln(out, header)
-		}
-
 		// Calculate max widths for alignment
 		maxSize := 0
 		maxUser := 0
@@ -515,6 +499,37 @@ func (c *LsCommand) Execute(ctx context.Context, args []string, out io.Writer, e
 			if len(group) > maxGroup {
 				maxGroup = len(group)
 			}
+		}
+
+		// Ensure header labels fit
+		permW := 10 // "drwxrwxrwx" = 10 chars
+		timeW := 12 // "Jan _2 15:04" = 12 chars
+		if maxSize < 4 {
+			maxSize = 4 // "Size"
+		}
+		if maxUser < 4 {
+			maxUser = 4 // "User"
+		}
+		if maxGroup < 5 {
+			maxGroup = 5 // "Group"
+		}
+		iconW := 3 // " X " badge
+
+		// Table header
+		if opts.Header {
+			hdrStyle := utils.StyleBold + utils.StyleUnderline
+			header := fmt.Sprintf(
+				"%s  %s  %s  %s  %s  %s  %s %s",
+				utils.Colorize(fmt.Sprintf("%-*s", permW, "Permissions"), hdrStyle),
+				utils.Colorize(fmt.Sprintf("%*s", maxSize, "Size"), hdrStyle),
+				utils.Colorize(fmt.Sprintf("%-*s", maxUser, "User"), hdrStyle),
+				utils.Colorize(fmt.Sprintf("%-*s", maxGroup, "Group"), hdrStyle),
+				utils.Colorize(fmt.Sprintf("%-*s", timeW, "Created"), hdrStyle),
+				utils.Colorize(fmt.Sprintf("%-*s", timeW, "Modified"), hdrStyle),
+				fmt.Sprintf("%*s", iconW, ""),
+				utils.Colorize("Name", hdrStyle),
+			)
+			fmt.Fprintln(out, header)
 		}
 
 		for _, e := range entries {
@@ -535,6 +550,8 @@ func (c *LsCommand) Execute(ctx context.Context, args []string, out io.Writer, e
 			icon := ""
 			if !opts.NoIcons {
 				icon = fileIcon(e)
+			} else {
+				icon = fmt.Sprintf("%*s", iconW, "")
 			}
 			name := colorName(e)
 
