@@ -344,6 +344,10 @@ func (p *Parser) parseIdentifier() ast.Expression {
 		return ident // Will be picked up as CallExpression by Pratt infix
 	}
 
+	// If peek is an operator or terminator, this identifier is part of an expression
+	// (not a command). But SLASH/ASTERISK/MODULO without space are path separators
+	// or glob patterns (build/dush.exe, ls *.go), not arithmetic — since bare
+	// identifiers are never variables, `ident/something` can't be division.
 	if p.peekTokenIs(token.ASSIGN) ||
 		p.peekTokenIs(token.EQ) || p.peekTokenIs(token.NOT_EQ) ||
 		p.peekTokenIs(token.LT) || p.peekTokenIs(token.GT) ||
@@ -352,9 +356,11 @@ func (p *Parser) parseIdentifier() ast.Expression {
 		p.peekTokenIs(token.SEMICOLON) ||
 		p.peekTokenIs(token.EOF) || p.peekTokenIs(token.RPAREN) ||
 		p.peekTokenIs(token.RBRACE) || p.peekTokenIs(token.COMMA) ||
-		p.peekTokenIs(token.PLUS) || p.peekTokenIs(token.ASTERISK) ||
-		p.peekTokenIs(token.SLASH) || p.peekTokenIs(token.MODULO) ||
-		p.peekTokenIs(token.LBRACKET) {
+		p.peekTokenIs(token.PLUS) ||
+		(p.peekTokenIs(token.ASTERISK) && p.peekToken.PrecededBySpace) ||
+		(p.peekTokenIs(token.SLASH) && p.peekToken.PrecededBySpace) ||
+		(p.peekTokenIs(token.MODULO) && p.peekToken.PrecededBySpace) ||
+		(p.peekTokenIs(token.LBRACKET) && p.peekToken.PrecededBySpace) {
 		return ident
 	}
 
@@ -364,18 +370,15 @@ func (p *Parser) parseIdentifier() ast.Expression {
 
 // parseCommandExpression builds a CommandExpression from an identifier that starts a command.
 func (p *Parser) parseCommandExpression(ident *ast.Identifier) ast.Expression {
-	// Absorb dotted command names: atlas.ed, git.exe, etc.
+	// Absorb path-like command names: build/dush.exe, ./cmd, C:\Users, atlas.ed, etc.
+	// Concatenate adjacent non-space tokens that are part of paths (DOT, SLASH, BACKSLASH, IDENT, etc.)
 	name := ident.Value
-	if p.peekTokenIs(token.DOT) && !p.peekToken.PrecededBySpace {
+	if !p.peekToken.PrecededBySpace && isCommandNamePart(p.peekToken.Type) {
 		var b strings.Builder
 		b.WriteString(name)
-		for p.peekTokenIs(token.DOT) && !p.peekToken.PrecededBySpace {
-			p.nextToken() // consume DOT
-			b.WriteByte('.')
-			if p.peekTokenIs(token.IDENT) && !p.peekToken.PrecededBySpace {
-				p.nextToken() // consume IDENT after dot
-				b.WriteString(p.curToken.Literal)
-			}
+		for !p.peekToken.PrecededBySpace && isCommandNamePart(p.peekToken.Type) {
+			p.nextToken()
+			b.WriteString(p.curToken.Literal)
 		}
 		name = b.String()
 	}
@@ -396,6 +399,16 @@ func (p *Parser) parseCommandExpression(ident *ast.Identifier) ast.Expression {
 	}
 
 	return cmd
+}
+
+// isCommandNamePart returns true for tokens that can be part of a command name/path.
+func isCommandNamePart(t token.TokenType) bool {
+	switch t {
+	case token.DOT, token.SLASH, token.BACKSLASH, token.IDENT,
+		token.MINUS, token.COLON, token.INT, token.ASTERISK:
+		return true
+	}
+	return false
 }
 
 // isCommandTerminator returns true for tokens that end command argument parsing.

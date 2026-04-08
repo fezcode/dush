@@ -68,53 +68,76 @@ func (le *lineEditor) autoComplete(line string, pos int) (string, int, bool) {
 
 	fields := strings.Fields(before)
 
-	// If the line is empty or we are completing the first word (command)
+	// If the line is empty or we are completing the first word (command/path)
 	if len(fields) == 0 || (len(fields) == 1 && !strings.HasSuffix(before, " ")) {
 		prefix := ""
 		if len(fields) > 0 {
 			prefix = fields[0]
 		}
 
-		matches := []string{}
-		// Builtins
-		for _, name := range builtins.ListBuiltins() {
-			if strings.HasPrefix(name, prefix) {
-				matches = append(matches, name)
+		// Check if prefix contains a path separator — if so, skip to file completion below
+		if !strings.ContainsAny(prefix, "/\\") {
+			matches := []string{}
+			// Builtins
+			for _, name := range builtins.ListBuiltins() {
+				if strings.HasPrefix(name, prefix) {
+					matches = append(matches, name)
+				}
 			}
-		}
-		// Aliases
-		cfg := config.GetConfig()
-		for name := range cfg.Aliases {
-			if strings.HasPrefix(name, prefix) {
-				matches = append(matches, name)
+			// Aliases
+			cfg := config.GetConfig()
+			for name := range cfg.Aliases {
+				if strings.HasPrefix(name, prefix) {
+					matches = append(matches, name)
+				}
 			}
+			// Files and directories in current dir
+			caseFold := runtime.GOOS == "windows"
+			appInstance := app.GetApp()
+			if entries, err := os.ReadDir(appInstance.GetCurrentDir()); err == nil {
+				sep := string(filepath.Separator)
+				for _, entry := range entries {
+					name := entry.Name()
+					matched := false
+					if caseFold {
+						matched = strings.HasPrefix(strings.ToLower(name), strings.ToLower(prefix))
+					} else {
+						matched = strings.HasPrefix(name, prefix)
+					}
+					if matched {
+						if entry.IsDir() {
+							matches = append(matches, name+sep)
+						} else {
+							matches = append(matches, name+" ")
+						}
+					}
+				}
+			}
+
+			if len(matches) == 0 {
+				return "", 0, false
+			}
+
+			sort.Strings(matches)
+
+			if len(matches) == 1 {
+				return matches[0] + after, len(matches[0]), true
+			}
+
+			// Multiple matches: cycle through real matches starting from the first
+			le.tabPrev = ""
+			le.tabAfter = after
+			le.tabQuoted = false
+			le.tabIndex = 0
+			le.tabMatches = matches
+
+			choice := le.tabMatches[0]
+			result := choice + after
+			le.lastTabLine = result
+			le.lastTabPos = len(choice)
+			return result, len(choice), true
 		}
-
-		if len(matches) == 0 {
-			return "", 0, false
-		}
-
-		sort.Strings(matches)
-
-		if len(matches) == 1 {
-			return matches[0] + " " + after, len(matches[0]) + 1, true
-		}
-
-		// Multiple matches: cycle through real matches starting from the first
-		le.tabPrev = ""
-		le.tabAfter = after
-		le.tabQuoted = false
-		le.tabIndex = 0
-		le.tabMatches = make([]string, len(matches))
-		for i, m := range matches {
-			le.tabMatches[i] = m + " "
-		}
-
-		choice := le.tabMatches[0]
-		result := choice + after
-		le.lastTabLine = result
-		le.lastTabPos = len(choice)
-		return result, len(choice), true
+		// Falls through to file path completion below for paths with separators
 	}
 
 	// File path completion — extract last argument respecting quotes
