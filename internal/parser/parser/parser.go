@@ -39,7 +39,12 @@ var precedences = map[token.TokenType]int{
 	token.SLASH:    PRODUCT,
 	token.ASTERISK: PRODUCT,
 	token.MODULO:   PRODUCT,
-	token.LPAREN:   CALL,
+	token.STDERR_GT:     LESSGREATER,
+	token.STDERR_APPEND: LESSGREATER,
+	token.ALL_GT:        LESSGREATER,
+	token.HERESTRING:    LESSGREATER,
+	token.LPAREN:        CALL,
+	token.LBRACKET: CALL,
 	token.DOT:      DOT_PREC,
 }
 
@@ -81,6 +86,8 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.WITH, p.parseWithExpression)
 	p.registerPrefix(token.PROC, p.parseProcLiteral)
 	p.registerPrefix(token.MATCH, p.parseMatchExpression)
+	p.registerPrefix(token.LBRACKET, p.parseArrayLiteral)
+	p.registerPrefix(token.LBRACE, p.parseMapLiteral)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -97,7 +104,12 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.APPEND, p.parseInfixExpression)
 	p.registerInfix(token.PIPE, p.parseInfixExpression)
 	p.registerInfix(token.ASSIGN, p.parseInfixExpression)
+	p.registerInfix(token.STDERR_GT, p.parseInfixExpression)
+	p.registerInfix(token.STDERR_APPEND, p.parseInfixExpression)
+	p.registerInfix(token.ALL_GT, p.parseInfixExpression)
+	p.registerInfix(token.HERESTRING, p.parseInfixExpression)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
+	p.registerInfix(token.LBRACKET, p.parseIndexExpression)
 	p.registerInfix(token.DOT, p.parseMethodCallExpression)
 
 	// Read two tokens, so curToken and peekToken are both set
@@ -341,7 +353,8 @@ func (p *Parser) parseIdentifier() ast.Expression {
 		p.peekTokenIs(token.EOF) || p.peekTokenIs(token.RPAREN) ||
 		p.peekTokenIs(token.RBRACE) || p.peekTokenIs(token.COMMA) ||
 		p.peekTokenIs(token.PLUS) || p.peekTokenIs(token.ASTERISK) ||
-		p.peekTokenIs(token.SLASH) || p.peekTokenIs(token.MODULO) {
+		p.peekTokenIs(token.SLASH) || p.peekTokenIs(token.MODULO) ||
+		p.peekTokenIs(token.LBRACKET) {
 		return ident
 	}
 
@@ -391,6 +404,8 @@ func isCommandTerminator(t token.TokenType) bool {
 	case token.SEMICOLON, token.EOF,
 		token.AND, token.OR, token.AMPERSAND,
 		token.PIPE, token.GT, token.APPEND, token.LT,
+		token.STDERR_GT, token.STDERR_APPEND, token.ALL_GT,
+		token.HEREDOC, token.HERESTRING,
 		token.RPAREN, token.RBRACE:
 		return true
 	}
@@ -1090,6 +1105,103 @@ func (p *Parser) parseCallArguments() []ast.Expression {
 	}
 
 	return args
+}
+
+// parseArrayLiteral: [expr, expr, ...]
+func (p *Parser) parseArrayLiteral() ast.Expression {
+	array := &ast.ArrayLiteral{Token: p.curToken}
+	array.Elements = p.parseExpressionList(token.RBRACKET)
+	return array
+}
+
+// parseIndexExpression: expr[index]
+func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
+	exp := &ast.IndexExpression{Token: p.curToken, Left: left}
+
+	p.nextToken()
+	exp.Index = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(token.RBRACKET) {
+		return nil
+	}
+
+	return exp
+}
+
+// parseMapLiteral: {key: value, key: value, ...}
+func (p *Parser) parseMapLiteral() ast.Expression {
+	ml := &ast.MapLiteral{Token: p.curToken}
+	ml.Pairs = make(map[ast.Expression]ast.Expression)
+	ml.Order = []ast.Expression{}
+
+	// Skip newlines after {
+	for p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	if p.peekTokenIs(token.RBRACE) {
+		p.nextToken()
+		return ml
+	}
+
+	for !p.peekTokenIs(token.RBRACE) && !p.peekTokenIs(token.EOF) {
+		p.nextToken()
+		key := p.parseExpression(LOWEST)
+
+		if !p.expectPeek(token.COLON) {
+			return nil
+		}
+
+		p.nextToken()
+		value := p.parseExpression(LOWEST)
+
+		ml.Pairs[key] = value
+		ml.Order = append(ml.Order, key)
+
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+			// Skip newlines after comma
+			for p.peekTokenIs(token.SEMICOLON) {
+				p.nextToken()
+			}
+		} else {
+			// Skip newlines before closing brace
+			for p.peekTokenIs(token.SEMICOLON) {
+				p.nextToken()
+			}
+		}
+	}
+
+	if !p.expectPeek(token.RBRACE) {
+		return nil
+	}
+
+	return ml
+}
+
+// parseExpressionList parses a comma-separated list of expressions until end token.
+func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expression {
+	list := []ast.Expression{}
+
+	if p.peekTokenIs(end) {
+		p.nextToken()
+		return list
+	}
+
+	p.nextToken()
+	list = append(list, p.parseExpression(LOWEST))
+
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken()
+		p.nextToken()
+		list = append(list, p.parseExpression(LOWEST))
+	}
+
+	if !p.expectPeek(end) {
+		return nil
+	}
+
+	return list
 }
 
 // --- Helper Functions ---

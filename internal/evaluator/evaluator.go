@@ -72,6 +72,16 @@ func Eval(node ast.Node, env *Environment) object.Object {
 		return evalVarExpression(node, env)
 	case *ast.MethodCallExpression:
 		return evalMethodCall(node, env)
+	case *ast.ArrayLiteral:
+		elements := evalExpressions(node.Elements, env)
+		if len(elements) == 1 && isError(elements[0]) {
+			return elements[0]
+		}
+		return &object.Array{Elements: elements}
+	case *ast.IndexExpression:
+		return evalIndexExpression(node, env)
+	case *ast.MapLiteral:
+		return evalMapLiteral(node, env)
 	case *ast.Identifier:
 		return evalIdentifier(node, env)
 	case *ast.CommandExpression:
@@ -97,7 +107,11 @@ func Eval(node ast.Node, env *Environment) object.Object {
 				}
 				return val
 			}
-			return newError("left side of assignment must be a variable (@name)")
+			// Index assignment: @arr[0] = val, @map["key"] = val
+			if indexExpr, ok := node.Left.(*ast.IndexExpression); ok {
+				return evalIndexAssignment(indexExpr, node.Right, env)
+			}
+			return newError("left side of assignment must be a variable (@name) or index expression")
 		}
 
 		if node.Operator == "&&" {
@@ -122,7 +136,7 @@ func Eval(node ast.Node, env *Environment) object.Object {
 		}
 
 		// Shell Pipes and Redirections
-		if isShellOperation(node.Left, env) && (node.Operator == "|" || node.Operator == ">" || node.Operator == ">>" || node.Operator == "<") {
+		if isShellOperation(node.Left, env) && (node.Operator == "|" || node.Operator == ">" || node.Operator == ">>" || node.Operator == "<" || node.Operator == "2>" || node.Operator == "2>>" || node.Operator == "&>" || node.Operator == "<<<") {
 			return evalShellOperation(node, env)
 		}
 
@@ -310,6 +324,57 @@ func evalShellOperation(node *ast.InfixExpression, env *Environment) object.Obje
 		newEnv.Stdin = f
 
 		return Eval(node.Left, newEnv)
+
+	case "2>", "2>>":
+		fileName := getFileName(node.Right, env)
+		if fileName == "" {
+			return newError("invalid file name for stderr redirection")
+		}
+
+		flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+		if node.Operator == "2>>" {
+			flags = os.O_WRONLY | os.O_CREATE | os.O_APPEND
+		}
+
+		f, err := os.OpenFile(fileName, flags, 0644)
+		if err != nil {
+			return newError("could not open file %s: %v", fileName, err)
+		}
+		defer f.Close()
+
+		newEnv := NewEnclosedEnvironment(env)
+		newEnv.Stderr = f
+
+		return Eval(node.Left, newEnv)
+
+	case "&>":
+		fileName := getFileName(node.Right, env)
+		if fileName == "" {
+			return newError("invalid file name for redirection")
+		}
+
+		f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return newError("could not open file %s: %v", fileName, err)
+		}
+		defer f.Close()
+
+		newEnv := NewEnclosedEnvironment(env)
+		newEnv.Stdout = f
+		newEnv.Stderr = f
+
+		return Eval(node.Left, newEnv)
+
+	case "<<<":
+		// Here-string: feed the right-hand side as stdin
+		val := Eval(node.Right, env)
+		if isError(val) {
+			return val
+		}
+		input := objectToString(val) + "\n"
+		newEnv := NewEnclosedEnvironment(env)
+		newEnv.Stdin = strings.NewReader(input)
+		return Eval(node.Left, newEnv)
 	}
 
 	return newError("unsupported shell operation: %s", node.Operator)
@@ -426,6 +491,16 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 					return val
 				}
 			}
+		case *object.Map:
+			for _, k := range src.Order {
+				pair := src.Pairs[k]
+				loopEnv := NewEnclosedEnvironment(env)
+				loopEnv.Set(iterName, pair.Key)
+				val := Eval(node.Body, loopEnv)
+				if val != nil && (val.Type() == object.RETURN_VALUE_OBJ || val.Type() == object.ERROR_OBJ) {
+					return val
+				}
+			}
 		default:
 			return newError("iteration not supported on %s", source.Type())
 		}
@@ -445,6 +520,152 @@ func evalWithExpression(node *ast.WithExpression, env *Environment) object.Objec
 	}
 
 	return Eval(node.Body, newEnv)
+}
+
+func evalIndexExpression(node *ast.IndexExpression, env *Environment) object.Object {
+	left := Eval(node.Left, env)
+	if isError(left) {
+		return left
+	}
+	index := Eval(node.Index, env)
+	if isError(index) {
+		return index
+	}
+
+	switch {
+	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
+		return evalArrayIndexExpression(left, index)
+	case left.Type() == object.MAP_OBJ:
+		return evalMapIndexExpression(left, index)
+	case left.Type() == object.STRING_OBJ && index.Type() == object.INTEGER_OBJ:
+		return evalStringIndexExpression(left, index)
+	default:
+		return newError("index operator not supported: %s[%s]", left.Type(), index.Type())
+	}
+}
+
+func evalArrayIndexExpression(array, index object.Object) object.Object {
+	arr := array.(*object.Array)
+	idx := index.(*object.Integer).Value
+	max := int64(len(arr.Elements) - 1)
+
+	if idx < 0 {
+		idx = int64(len(arr.Elements)) + idx
+	}
+	if idx < 0 || idx > max {
+		return NULL
+	}
+
+	return arr.Elements[idx]
+}
+
+func evalStringIndexExpression(str, index object.Object) object.Object {
+	s := str.(*object.String)
+	idx := index.(*object.Integer).Value
+	runes := []rune(s.Value)
+	max := int64(len(runes) - 1)
+
+	if idx < 0 {
+		idx = int64(len(runes)) + idx
+	}
+	if idx < 0 || idx > max {
+		return NULL
+	}
+
+	return &object.String{Value: string(runes[idx])}
+}
+
+func evalMapIndexExpression(m, key object.Object) object.Object {
+	mapObj := m.(*object.Map)
+	hashKey, ok := object.HashKeyFromObject(key)
+	if !ok {
+		return newError("unusable as map key: %s", key.Type())
+	}
+	pair, ok := mapObj.Pairs[hashKey]
+	if !ok {
+		return NULL
+	}
+	return pair.Value
+}
+
+func evalIndexAssignment(indexExpr *ast.IndexExpression, valueNode ast.Expression, env *Environment) object.Object {
+	left := Eval(indexExpr.Left, env)
+	if isError(left) {
+		return left
+	}
+	index := Eval(indexExpr.Index, env)
+	if isError(index) {
+		return index
+	}
+	val := Eval(valueNode, env)
+	if isError(val) {
+		return val
+	}
+
+	switch obj := left.(type) {
+	case *object.Array:
+		idx, ok := index.(*object.Integer)
+		if !ok {
+			return newError("array index must be an integer, got %s", index.Type())
+		}
+		i := idx.Value
+		if i < 0 {
+			i = int64(len(obj.Elements)) + i
+		}
+		if i < 0 || i >= int64(len(obj.Elements)) {
+			return newError("array index out of bounds: %d", idx.Value)
+		}
+		obj.Elements[i] = val
+		return val
+	case *object.Map:
+		hashKey, ok := object.HashKeyFromObject(index)
+		if !ok {
+			return newError("unusable as map key: %s", index.Type())
+		}
+		obj.Pairs[hashKey] = object.MapPair{Key: index, Value: val}
+		// Add to order if new key
+		found := false
+		for _, k := range obj.Order {
+			if k == hashKey {
+				found = true
+				break
+			}
+		}
+		if !found {
+			obj.Order = append(obj.Order, hashKey)
+		}
+		return val
+	default:
+		return newError("index assignment not supported on %s", left.Type())
+	}
+}
+
+func evalMapLiteral(node *ast.MapLiteral, env *Environment) object.Object {
+	pairs := make(map[object.HashKey]object.MapPair)
+	order := make([]object.HashKey, 0, len(node.Order))
+
+	for _, keyNode := range node.Order {
+		key := Eval(keyNode, env)
+		if isError(key) {
+			return key
+		}
+
+		hashKey, ok := object.HashKeyFromObject(key)
+		if !ok {
+			return newError("unusable as map key: %s", key.Type())
+		}
+
+		valNode := node.Pairs[keyNode]
+		val := Eval(valNode, env)
+		if isError(val) {
+			return val
+		}
+
+		pairs[hashKey] = object.MapPair{Key: key, Value: val}
+		order = append(order, hashKey)
+	}
+
+	return &object.Map{Pairs: pairs, Order: order}
 }
 
 // evalIdentifier: In the @ system, bare identifiers resolve to:
@@ -712,6 +933,10 @@ func objectToString(obj object.Object) string {
 		return fmt.Sprintf("%g", obj.Value)
 	case *object.Boolean:
 		return fmt.Sprintf("%t", obj.Value)
+	case *object.Array:
+		return obj.Inspect()
+	case *object.Map:
+		return obj.Inspect()
 	default:
 		return obj.Inspect()
 	}

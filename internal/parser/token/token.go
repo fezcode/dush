@@ -37,11 +37,16 @@ const (
 	OR     = "||"
 
 	// Shell Operators
-	PIPE      = "|"
-	REDIRECT  = ">" // Same as GT, context matters
-	APPEND    = ">>"
-	INPUT     = "<" // Same as LT
-	AMPERSAND = "&"
+	PIPE          = "|"
+	REDIRECT      = ">" // Same as GT, context matters
+	APPEND        = ">>"
+	INPUT         = "<" // Same as LT
+	AMPERSAND     = "&"
+	STDERR_GT     = "2>"  // stderr redirect
+	STDERR_APPEND = "2>>" // stderr append
+	ALL_GT        = "&>"  // redirect both stdout+stderr
+	HEREDOC       = "<<"  // here-doc delimiter
+	HERESTRING    = "<<<" // here-string
 
 	// Variable sigil
 	AT = "@"

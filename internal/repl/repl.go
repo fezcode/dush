@@ -498,11 +498,14 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 			isIncomplete := false
 			for _, msg := range p.Errors() {
 				if strings.Contains(msg, "unexpected EOF") ||
-					strings.Contains(msg, "expected next token to be }, got EOF instead") ||
-					strings.Contains(msg, "expected next token to be ), got EOF instead") {
+					strings.Contains(msg, "got EOF instead") {
 					isIncomplete = true
 					break
 				}
+			}
+			// Also check for unclosed quotes in the raw buffer
+			if !isIncomplete && isUnclosed(commandBuffer) {
+				isIncomplete = true
 			}
 
 			if isIncomplete {
@@ -562,6 +565,53 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 			}
 		}
 	}
+}
+
+// isUnclosed checks if the input has unclosed quotes or brackets that indicate
+// the user is still typing a multiline expression.
+func isUnclosed(input string) bool {
+	inDouble := false
+	inSingle := false
+	braces := 0
+	brackets := 0
+	parens := 0
+
+	for i := 0; i < len(input); i++ {
+		ch := input[i]
+		switch {
+		case inDouble:
+			if ch == '"' {
+				inDouble = false
+			}
+		case inSingle:
+			if ch == '\'' {
+				inSingle = false
+			}
+		case ch == '"':
+			inDouble = true
+		case ch == '\'':
+			inSingle = true
+		case ch == '/' && i+1 < len(input) && input[i+1] == '/':
+			// Skip to end of line (comment)
+			for i < len(input) && input[i] != '\n' {
+				i++
+			}
+		case ch == '{':
+			braces++
+		case ch == '}':
+			braces--
+		case ch == '[':
+			brackets++
+		case ch == ']':
+			brackets--
+		case ch == '(':
+			parens++
+		case ch == ')':
+			parens--
+		}
+	}
+
+	return inDouble || inSingle || braces > 0 || brackets > 0 || parens > 0
 }
 
 // envStringOr reads a variable from the dush environment, returning fallback if not set.

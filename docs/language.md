@@ -68,6 +68,8 @@ Double-quoted strings support `@` interpolation. Single-quoted strings are raw.
 @greeting = "hello @name"  // "hello world"
 @raw = 'hello @name'       // "hello @name"
 @concat = "hello" + " " + "world"
+@ch = @name[0]             // "w" (index access)
+@last = @name[-1]          // "d" (negative index)
 ```
 
 **Methods:**
@@ -102,17 +104,91 @@ Double-quoted strings support `@` interpolation. Single-quoted strings are raw.
 ### Array
 
 ```
-@arr = split("a,b,c", ",")
-@arr.len()                 // 3
-@arr.join(" | ")           // "a | b | c"
-@arr.contains("b")        // true
+@arr = [1, 2, 3, 4, 5]
+@names = ["alice", "bob", "charlie"]
+@mixed = [1, "two", true, 3.14]
+@empty = []
+```
 
+**Index access** (0-based, negative wraps from end):
+```
+@arr[0]                    // 1
+@arr[-1]                   // 5
+@arr[2] = 99               // assignment
+```
+
+**Methods:**
+
+| Method | Returns | Description |
+|---|---|---|
+| `.len()` | Integer | Element count |
+| `.join(sep)` | String | Join elements with separator |
+| `.contains(val)` | Boolean | Check if value exists |
+| `.push(val...)` | Array | Append elements (mutates) |
+| `.pop()` | any | Remove and return last element |
+| `.first()` | any | First element (or null) |
+| `.last()` | any | Last element (or null) |
+| `.slice(start, end?)` | Array | Sub-array by index |
+| `.reverse()` | Array | Reversed copy |
+| `.map(fn)` | Array | Transform each element |
+| `.filter(fn)` | Array | Keep elements where fn returns true |
+
+```
+@nums = [1, 2, 3, 4, 5]
+@doubled = @nums.map(proc(@x) { return @x * 2 })       // [2, 4, 6, 8, 10]
+@evens = @nums.filter(proc(@x) { return @x % 2 == 0 })  // [2, 4]
+@nums.push(6)                                             // [1, 2, 3, 4, 5, 6]
+echo @nums.join(", ")                                     // 1, 2, 3, 4, 5, 6
+```
+
+Looping:
+```
 loop (@item : @arr) {
     echo @item
 }
 ```
 
-**Methods:** `.len()`, `.join(sep)`, `.contains(val)`
+### Map
+
+```
+@user = {"name": "alice", "age": 30, "active": true}
+@empty = {}
+```
+
+**Key access and assignment:**
+```
+@user["name"]              // "alice"
+@user["age"] = 31          // update
+@user["email"] = "a@b.c"  // add new key
+```
+
+**Methods:**
+
+| Method | Returns | Description |
+|---|---|---|
+| `.len()` | Integer | Number of pairs |
+| `.keys()` | Array | All keys in insertion order |
+| `.values()` | Array | All values in insertion order |
+| `.has(key)` | Boolean | Check if key exists |
+| `.delete(key)` | Boolean | Remove a key, returns true if existed |
+| `.merge(other)` | Map | New map with both maps' pairs (other wins conflicts) |
+
+```
+@config = {"host": "localhost", "port": "8080"}
+echo @config.keys().join(", ")          // host, port
+echo @config.has("host")                // true
+@config.delete("port")
+
+@extra = {"debug": "true"}
+@merged = @config.merge(@extra)         // host + debug
+```
+
+Looping over map keys:
+```
+loop (@key : @config) {
+    echo @key
+}
+```
 
 ### Type Conversion
 
@@ -250,10 +326,9 @@ let @count = make_counter()
 
 ## Roadmap
 
-- Globbing: `ls *.go`
-- Map type: `@m = {"key": "value"}`
-- Array literals: `@arr = [1, 2, 3]`
-- Index expressions: `@arr[0]`
-- Error handling patterns
-- Signal trapping
-- Here-docs
+- Error handling (try/catch)
+- Here-docs (`<<EOF ... EOF`)
+- Regex match with captures
+- JSON parse/stringify builtins
+- HTTP fetch builtin
+- Break/continue in loops

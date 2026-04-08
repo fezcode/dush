@@ -35,6 +35,22 @@ echo "more" >> output.txt  // redirect stdout (append)
 sort < input.txt           // redirect stdin from file
 ```
 
+### Stderr Redirects
+
+```
+cmd 2> errors.txt          // redirect stderr (truncate)
+cmd 2>> errors.txt         // redirect stderr (append)
+cmd &> all.txt             // redirect both stdout+stderr to file
+```
+
+### Here-strings
+
+Feed a string directly as stdin to a command:
+```
+sort <<< "banana\napple\ncherry"
+cat <<< @message
+```
+
 ## Background Jobs
 
 ```

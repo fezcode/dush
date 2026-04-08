@@ -1,0 +1,43 @@
+// Map type — ITEMS.md #2, #3
+
+// Map literal
+@user = {"name": "alice", "age": 30, "active": true}
+echo @user
+
+// Key access
+echo @user["name"]
+echo @user["age"]
+
+// Key assignment (update existing)
+@user["age"] = 31
+echo @user["age"]
+
+// Key assignment (add new)
+@user["email"] = "alice@example.com"
+echo @user["email"]
+
+// Methods
+echo @user.len()
+echo @user.keys()
+echo @user.values()
+echo @user.has("name")
+echo @user.has("phone")
+
+// Delete
+@user.delete("active")
+echo @user.has("active")
+
+// Merge
+@extra = {"role": "admin", "name": "alice (admin)"}
+@merged = @user.merge(@extra)
+echo @merged
+
+// Loop over map keys
+@config = {"host": "localhost", "port": "8080", "debug": "true"}
+loop (@key : @config) {
+    echo "@key = @config[@key]"
+}
+
+// Empty map
+@empty = {}
+echo @empty.len()

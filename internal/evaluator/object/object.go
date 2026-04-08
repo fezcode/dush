@@ -19,6 +19,7 @@ const (
 	FUNCTION_OBJ     = "FUNCTION"
 	BUILTIN_OBJ      = "BUILTIN"
 	ARRAY_OBJ        = "ARRAY"
+	MAP_OBJ          = "MAP"
 )
 
 type BuiltinFunction func(args ...Object) Object
@@ -96,6 +97,51 @@ func (a *Array) Inspect() string {
 	out.WriteString("[")
 	out.WriteString(strings.Join(elements, ", "))
 	out.WriteString("]")
+	return out.String()
+}
+
+// HashKey is used as a map key for the Map object.
+type HashKey struct {
+	Type  ObjectType
+	Value string // string representation for hashing
+}
+
+func HashKeyFromObject(obj Object) (HashKey, bool) {
+	switch o := obj.(type) {
+	case *String:
+		return HashKey{Type: STRING_OBJ, Value: o.Value}, true
+	case *Integer:
+		return HashKey{Type: INTEGER_OBJ, Value: fmt.Sprintf("%d", o.Value)}, true
+	case *Boolean:
+		return HashKey{Type: BOOLEAN_OBJ, Value: fmt.Sprintf("%t", o.Value)}, true
+	default:
+		return HashKey{}, false
+	}
+}
+
+// MapPair holds a key-value pair in a Map.
+type MapPair struct {
+	Key   Object
+	Value Object
+}
+
+// Map represents a hash map / dictionary.
+type Map struct {
+	Pairs map[HashKey]MapPair
+	Order []HashKey // preserves insertion order
+}
+
+func (m *Map) Type() ObjectType { return MAP_OBJ }
+func (m *Map) Inspect() string {
+	var out bytes.Buffer
+	pairs := []string{}
+	for _, k := range m.Order {
+		pair := m.Pairs[k]
+		pairs = append(pairs, fmt.Sprintf("%s: %s", pair.Key.Inspect(), pair.Value.Inspect()))
+	}
+	out.WriteString("{")
+	out.WriteString(strings.Join(pairs, ", "))
+	out.WriteString("}")
 	return out.String()
 }
 

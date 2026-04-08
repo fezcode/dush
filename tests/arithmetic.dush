@@ -1,0 +1,24 @@
+// Arithmetic in commands — ITEMS.md #29
+// dush supports arithmetic via grouped expressions in command args.
+
+// Bash: echo $((5 + 3))
+// Dush:
+echo (5 + 3)
+
+// Bash: x=10; echo $((x * 2))
+// Dush:
+@x = 10
+echo (@x * 2)
+
+// Bash: echo $((10 % 3))
+// Dush:
+echo (10 % 3)
+
+// Float arithmetic (bash can't do this natively)
+@pi = 3.14
+echo (@pi * 2)
+
+// Expressions in string interpolation
+@a = 5
+@b = 3
+echo "sum is (@a + @b)"

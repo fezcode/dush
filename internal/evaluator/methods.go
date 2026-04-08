@@ -28,6 +28,8 @@ func evalMethodCall(node *ast.MethodCallExpression, env *Environment) object.Obj
 		return evalIntegerMethod(o, node.Method, args)
 	case *object.Float:
 		return evalFloatMethod(o, node.Method, args)
+	case *object.Map:
+		return evalMapMethod(o, node.Method, args)
 	default:
 		return newError("type %s has no method '%s'", obj.Type(), node.Method)
 	}
@@ -204,8 +206,205 @@ func evalArrayMethod(a *object.Array, method string, args []object.Object) objec
 			}
 		}
 		return nativeBoolToBooleanObject(false)
+	case "push":
+		if len(args) == 0 {
+			return newError("push() requires at least 1 argument")
+		}
+		a.Elements = append(a.Elements, args...)
+		return a
+	case "pop":
+		if len(a.Elements) == 0 {
+			return NULL
+		}
+		last := a.Elements[len(a.Elements)-1]
+		a.Elements = a.Elements[:len(a.Elements)-1]
+		return last
+	case "first":
+		if len(a.Elements) == 0 {
+			return NULL
+		}
+		return a.Elements[0]
+	case "last":
+		if len(a.Elements) == 0 {
+			return NULL
+		}
+		return a.Elements[len(a.Elements)-1]
+	case "slice":
+		if len(args) < 1 || len(args) > 2 {
+			return newError("slice() takes 1-2 arguments, got %d", len(args))
+		}
+		start, ok := args[0].(*object.Integer)
+		if !ok {
+			return newError("slice() start must be an integer")
+		}
+		s := start.Value
+		length := int64(len(a.Elements))
+		if s < 0 {
+			s = length + s
+		}
+		if s < 0 {
+			s = 0
+		}
+		if s > length {
+			s = length
+		}
+		var e int64
+		if len(args) == 2 {
+			end, ok := args[1].(*object.Integer)
+			if !ok {
+				return newError("slice() end must be an integer")
+			}
+			e = end.Value
+			if e < 0 {
+				e = length + e
+			}
+		} else {
+			e = length
+		}
+		if e < s {
+			e = s
+		}
+		if e > length {
+			e = length
+		}
+		newElements := make([]object.Object, e-s)
+		copy(newElements, a.Elements[s:e])
+		return &object.Array{Elements: newElements}
+	case "reverse":
+		newElements := make([]object.Object, len(a.Elements))
+		for i, el := range a.Elements {
+			newElements[len(a.Elements)-1-i] = el
+		}
+		return &object.Array{Elements: newElements}
+	case "map":
+		if len(args) != 1 {
+			return newError("map() takes 1 argument (a function), got %d", len(args))
+		}
+		fn, ok := args[0].(*object.Function)
+		if !ok {
+			return newError("map() argument must be a function")
+		}
+		result := make([]object.Object, len(a.Elements))
+		for i, el := range a.Elements {
+			env := extendFunctionEnvSingle(fn, el)
+			body := fn.Body.(*ast.BlockStatement)
+			val := Eval(body, env)
+			val = unwrapReturnValue(val)
+			if isError(val) {
+				return val
+			}
+			result[i] = val
+		}
+		return &object.Array{Elements: result}
+	case "filter":
+		if len(args) != 1 {
+			return newError("filter() takes 1 argument (a function), got %d", len(args))
+		}
+		fn, ok := args[0].(*object.Function)
+		if !ok {
+			return newError("filter() argument must be a function")
+		}
+		result := []object.Object{}
+		for _, el := range a.Elements {
+			env := extendFunctionEnvSingle(fn, el)
+			body := fn.Body.(*ast.BlockStatement)
+			val := Eval(body, env)
+			val = unwrapReturnValue(val)
+			if isError(val) {
+				return val
+			}
+			if isTruthy(val) {
+				result = append(result, el)
+			}
+		}
+		return &object.Array{Elements: result}
 	default:
 		return newError("ARRAY has no method '%s'", method)
+	}
+}
+
+// extendFunctionEnvSingle creates a new env for a single-arg function call.
+func extendFunctionEnvSingle(fn *object.Function, arg object.Object) *Environment {
+	env := NewEnclosedEnvironment(fn.Env.(*Environment))
+	params := fn.Parameters.([]*ast.VarExpression)
+	if len(params) > 0 {
+		env.Set(params[0].Name, arg)
+	}
+	return env
+}
+
+// --- Map Methods ---
+
+func evalMapMethod(m *object.Map, method string, args []object.Object) object.Object {
+	switch method {
+	case "len":
+		return &object.Integer{Value: int64(len(m.Pairs))}
+	case "keys":
+		keys := make([]object.Object, 0, len(m.Order))
+		for _, k := range m.Order {
+			keys = append(keys, m.Pairs[k].Key)
+		}
+		return &object.Array{Elements: keys}
+	case "values":
+		vals := make([]object.Object, 0, len(m.Order))
+		for _, k := range m.Order {
+			vals = append(vals, m.Pairs[k].Value)
+		}
+		return &object.Array{Elements: vals}
+	case "has":
+		if len(args) != 1 {
+			return newError("has() takes 1 argument, got %d", len(args))
+		}
+		hashKey, ok := object.HashKeyFromObject(args[0])
+		if !ok {
+			return newError("unusable as map key: %s", args[0].Type())
+		}
+		_, exists := m.Pairs[hashKey]
+		return nativeBoolToBooleanObject(exists)
+	case "delete":
+		if len(args) != 1 {
+			return newError("delete() takes 1 argument, got %d", len(args))
+		}
+		hashKey, ok := object.HashKeyFromObject(args[0])
+		if !ok {
+			return newError("unusable as map key: %s", args[0].Type())
+		}
+		if _, exists := m.Pairs[hashKey]; exists {
+			delete(m.Pairs, hashKey)
+			// Remove from order
+			for i, k := range m.Order {
+				if k == hashKey {
+					m.Order = append(m.Order[:i], m.Order[i+1:]...)
+					break
+				}
+			}
+			return TRUE
+		}
+		return FALSE
+	case "merge":
+		if len(args) != 1 {
+			return newError("merge() takes 1 argument (a map), got %d", len(args))
+		}
+		other, ok := args[0].(*object.Map)
+		if !ok {
+			return newError("merge() argument must be a map")
+		}
+		// Create a new map with merged pairs
+		newPairs := make(map[object.HashKey]object.MapPair)
+		newOrder := make([]object.HashKey, len(m.Order))
+		copy(newOrder, m.Order)
+		for k, v := range m.Pairs {
+			newPairs[k] = v
+		}
+		for _, k := range other.Order {
+			if _, exists := newPairs[k]; !exists {
+				newOrder = append(newOrder, k)
+			}
+			newPairs[k] = other.Pairs[k]
+		}
+		return &object.Map{Pairs: newPairs, Order: newOrder}
+	default:
+		return newError("MAP has no method '%s'", method)
 	}
 }
 

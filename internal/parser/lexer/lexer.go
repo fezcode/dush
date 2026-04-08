@@ -75,8 +75,18 @@ func (l *Lexer) NextToken() token.Token {
 		tok = newToken(token.MODULO, l.ch)
 		tok.PrecededBySpace = hadSpace
 	case '<':
-		tok = newToken(token.LT, l.ch)
-		tok.PrecededBySpace = hadSpace
+		if l.peekChar() == '<' {
+			l.readChar() // consume second <
+			if l.peekChar() == '<' {
+				l.readChar() // consume third <
+				tok = token.Token{Type: token.HERESTRING, Literal: "<<<", PrecededBySpace: hadSpace}
+			} else {
+				tok = token.Token{Type: token.HEREDOC, Literal: "<<", PrecededBySpace: hadSpace}
+			}
+		} else {
+			tok = newToken(token.LT, l.ch)
+			tok.PrecededBySpace = hadSpace
+		}
 	case '>':
 		if l.peekChar() == '>' {
 			ch := l.ch
@@ -93,6 +103,9 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar()
 			literal := string(ch) + string(l.ch)
 			tok = token.Token{Type: token.AND, Literal: literal, PrecededBySpace: hadSpace}
+		} else if l.peekChar() == '>' {
+			l.readChar() // consume >
+			tok = token.Token{Type: token.ALL_GT, Literal: "&>", PrecededBySpace: hadSpace}
 		} else {
 			tok = newToken(token.AMPERSAND, l.ch)
 			tok.PrecededBySpace = hadSpace
@@ -166,6 +179,19 @@ func (l *Lexer) NextToken() token.Token {
 		} else if isDigit(l.ch) {
 			tok.PrecededBySpace = hadSpace
 			tok.Literal = l.readNumber()
+			// Check for stderr redirect: 2> or 2>>
+			if tok.Literal == "2" && l.ch == '>' {
+				l.readChar() // consume >
+				if l.ch == '>' {
+					l.readChar() // consume second >
+					tok.Type = token.STDERR_APPEND
+					tok.Literal = "2>>"
+				} else {
+					tok.Type = token.STDERR_GT
+					tok.Literal = "2>"
+				}
+				return tok
+			}
 			if l.ch == '.' && isDigit(l.peekChar()) {
 				tok.Literal += "."
 				l.readChar()

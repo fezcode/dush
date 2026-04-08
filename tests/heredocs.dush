@@ -1,0 +1,16 @@
+// Here-strings — ITEMS.md #10
+// Feed a string directly as stdin to a command.
+
+// Basic here-string
+sort <<< "banana apple cherry"
+
+// With a variable
+@msg = "hello world"
+cat <<< @msg
+
+// With interpolated string
+@name = "dush"
+cat <<< "welcome to @name"
+
+// Pipe after here-string
+sort <<< "cherry banana apple"

@@ -456,6 +456,67 @@ func (mc *MatchCase) String() string {
 	return out.String()
 }
 
+// ArrayLiteral: [1, 2, 3]
+type ArrayLiteral struct {
+	Token    token.Token  // the '[' token
+	Elements []Expression
+}
+
+func (al *ArrayLiteral) expressionNode()      {}
+func (al *ArrayLiteral) TokenLiteral() string { return al.Token.Literal }
+func (al *ArrayLiteral) String() string {
+	var out bytes.Buffer
+	elements := []string{}
+	for _, e := range al.Elements {
+		elements = append(elements, e.String())
+	}
+	out.WriteString("[")
+	out.WriteString(strings.Join(elements, ", "))
+	out.WriteString("]")
+	return out.String()
+}
+
+// IndexExpression: @arr[0] or @map["key"]
+type IndexExpression struct {
+	Token token.Token // the '[' token
+	Left  Expression  // the object being indexed
+	Index Expression  // the index/key
+}
+
+func (ie *IndexExpression) expressionNode()      {}
+func (ie *IndexExpression) TokenLiteral() string { return ie.Token.Literal }
+func (ie *IndexExpression) String() string {
+	var out bytes.Buffer
+	out.WriteString("(")
+	out.WriteString(ie.Left.String())
+	out.WriteString("[")
+	out.WriteString(ie.Index.String())
+	out.WriteString("])")
+	return out.String()
+}
+
+// MapLiteral: {"key": "value", "a": 1}
+type MapLiteral struct {
+	Token token.Token            // the '{' token
+	Pairs map[Expression]Expression
+	Order []Expression           // preserves insertion order of keys
+}
+
+func (ml *MapLiteral) expressionNode()      {}
+func (ml *MapLiteral) TokenLiteral() string { return ml.Token.Literal }
+func (ml *MapLiteral) String() string {
+	var out bytes.Buffer
+	pairs := []string{}
+	for _, key := range ml.Order {
+		val := ml.Pairs[key]
+		pairs = append(pairs, key.String()+": "+val.String())
+	}
+	out.WriteString("{")
+	out.WriteString(strings.Join(pairs, ", "))
+	out.WriteString("}")
+	return out.String()
+}
+
 // CommandExpression: git status -m "fix"
 type CommandExpression struct {
 	Token token.Token  // The first word (command name)

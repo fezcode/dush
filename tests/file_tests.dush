@@ -1,0 +1,29 @@
+// File test examples — ITEMS.md #28
+// dush already covers common file tests via built-in functions.
+
+// Check if a file exists (bash: test -f file || test -e file)
+if (exists("tests/file_tests.dush")) {
+    echo "file exists"
+}
+
+// Check if a directory exists (bash: test -d dir)
+if (is_dir("tests")) {
+    echo "tests/ is a directory"
+}
+
+// Check if something is NOT a directory (i.e., it's a file)
+if (exists("tests/file_tests.dush") && !is_dir("tests/file_tests.dush")) {
+    echo "it's a regular file"
+}
+
+// Check if a string is empty (bash: test -z "$var")
+@s = ""
+if (@s.len() == 0) {
+    echo "string is empty"
+}
+
+// Check if a string is non-empty (bash: test -n "$var")
+@name = "dush"
+if (@name.len() > 0) {
+    echo "string is non-empty"
+}

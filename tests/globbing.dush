@@ -1,0 +1,14 @@
+// Globbing — ITEMS.md #6
+// dush already expands * and ? in command arguments.
+
+// List all .go files (bash: ls *.go)
+ls *.go
+
+// List all .md files
+ls *.md
+
+// Wildcard in subdirectory
+ls internal/utils/*.go
+
+// Single character wildcard
+ls *.?o

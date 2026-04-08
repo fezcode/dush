@@ -1,0 +1,61 @@
+// Array literals and operations — ITEMS.md #1, #3
+
+// Array literal
+@arr = [1, 2, 3, 4, 5]
+echo @arr
+
+// Index access
+echo @arr[0]
+echo @arr[2]
+echo @arr[-1]
+
+// Index assignment
+@arr[0] = 10
+echo @arr[0]
+
+// Methods
+echo @arr.len()
+echo @arr.first()
+echo @arr.last()
+
+// Push and pop
+@arr.push(6)
+echo @arr
+@last = @arr.pop()
+echo @last
+
+// Slice
+@sub = @arr.slice(1, 3)
+echo @sub
+
+// Reverse
+@rev = @arr.reverse()
+echo @rev
+
+// Join
+echo @arr.join(", ")
+
+// Contains
+echo @arr.contains(3)
+
+// String arrays
+@names = ["alice", "bob", "charlie"]
+echo @names.join(" + ")
+
+// Map and filter with proc
+@nums = [1, 2, 3, 4, 5]
+@doubled = @nums.map(proc(@x) { return @x * 2 })
+echo @doubled
+
+@evens = @nums.filter(proc(@x) { return @x % 2 == 0 })
+echo @evens
+
+// String indexing
+@s = "hello"
+echo @s[0]
+echo @s[-1]
+
+// Loop over array
+loop (@item : @arr) {
+    echo @item
+}
