@@ -124,8 +124,18 @@ func (l *Lexer) NextToken() token.Token {
 		tok = newToken(token.AT, l.ch)
 		tok.PrecededBySpace = hadSpace
 	case '.':
-		tok = newToken(token.DOT, l.ch)
-		tok.PrecededBySpace = hadSpace
+		if l.peekChar() == '.' {
+			l.readChar() // consume second .
+			if l.peekChar() == '=' {
+				l.readChar() // consume =
+				tok = token.Token{Type: token.RANGE_EQ, Literal: "..=", PrecededBySpace: hadSpace}
+			} else {
+				tok = token.Token{Type: token.RANGE, Literal: "..", PrecededBySpace: hadSpace}
+			}
+		} else {
+			tok = newToken(token.DOT, l.ch)
+			tok.PrecededBySpace = hadSpace
+		}
 	case '\\':
 		tok = newToken(token.BACKSLASH, l.ch)
 		tok.PrecededBySpace = hadSpace

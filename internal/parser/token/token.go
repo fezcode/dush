@@ -51,6 +51,10 @@ const (
 	// Variable sigil
 	AT = "@"
 
+	// Range operators
+	RANGE     = ".."  // exclusive range: 1..5 → [1,2,3,4]
+	RANGE_EQ  = "..=" // inclusive range: 1..=5 → [1,2,3,4,5]
+
 	// Delimiters
 	COMMA     = ","
 	SEMICOLON = ";"
@@ -77,8 +81,10 @@ const (
 	LOOP   = "LOOP"
 	WITH   = "WITH"
 	PUB    = "PUB"
-	MATCH  = "MATCH"
-	CASE   = "CASE"
+	MATCH    = "MATCH"
+	CASE     = "CASE"
+	BREAK    = "BREAK"
+	CONTINUE = "CONTINUE"
 
 	// Legacy (kept as constant, removed from keywords map)
 	SAVE = "SAVE"
@@ -96,8 +102,10 @@ var keywords = map[string]TokenType{
 	"loop":   LOOP,
 	"with":   WITH,
 	"pub":    PUB,
-	"match":  MATCH,
-	"case":   CASE,
+	"match":    MATCH,
+	"case":     CASE,
+	"break":    BREAK,
+	"continue": CONTINUE,
 }
 
 func LookupIdent(ident string) TokenType {

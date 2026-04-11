@@ -260,6 +260,42 @@ func (bl *BooleanLiteral) expressionNode()      {}
 func (bl *BooleanLiteral) TokenLiteral() string { return bl.Token.Literal }
 func (bl *BooleanLiteral) String() string       { return bl.Token.Literal }
 
+// RangeExpression: 1..10 or 1..=10
+type RangeExpression struct {
+	Token     token.Token // the .. or ..= token
+	Start     Expression
+	End       Expression
+	Inclusive bool // true for ..=
+}
+
+func (re *RangeExpression) expressionNode()      {}
+func (re *RangeExpression) TokenLiteral() string { return re.Token.Literal }
+func (re *RangeExpression) String() string {
+	op := ".."
+	if re.Inclusive {
+		op = "..="
+	}
+	return "(" + re.Start.String() + op + re.End.String() + ")"
+}
+
+// BreakStatement: break
+type BreakStatement struct {
+	Token token.Token
+}
+
+func (bs *BreakStatement) statementNode()       {}
+func (bs *BreakStatement) TokenLiteral() string { return bs.Token.Literal }
+func (bs *BreakStatement) String() string       { return "break" }
+
+// ContinueStatement: continue
+type ContinueStatement struct {
+	Token token.Token
+}
+
+func (cs *ContinueStatement) statementNode()       {}
+func (cs *ContinueStatement) TokenLiteral() string { return cs.Token.Literal }
+func (cs *ContinueStatement) String() string       { return "continue" }
+
 // PrefixExpression: -5, !true
 type PrefixExpression struct {
 	Token    token.Token

@@ -82,6 +82,12 @@ func Eval(node ast.Node, env *Environment) object.Object {
 		return evalIndexExpression(node, env)
 	case *ast.MapLiteral:
 		return evalMapLiteral(node, env)
+	case *ast.RangeExpression:
+		return evalRangeExpression(node, env)
+	case *ast.BreakStatement:
+		return &object.Break{}
+	case *ast.ContinueStatement:
+		return &object.Continue{}
 	case *ast.Identifier:
 		return evalIdentifier(node, env)
 	case *ast.CommandExpression:
@@ -431,12 +437,30 @@ func evalBlockStatement(block *ast.BlockStatement, env *Environment) object.Obje
 		result = Eval(statement, env)
 		if result != nil {
 			rt := result.Type()
-			if rt == object.RETURN_VALUE_OBJ || rt == object.ERROR_OBJ {
+			if rt == object.RETURN_VALUE_OBJ || rt == object.ERROR_OBJ ||
+				rt == object.BREAK_OBJ || rt == object.CONTINUE_OBJ {
 				return result
 			}
 		}
 	}
 	return result
+}
+
+// loopBodyResult checks the result of evaluating a loop body.
+// Returns: shouldBreak, shouldReturn, returnValue
+func loopBodyResult(val object.Object) (bool, bool, object.Object) {
+	if val == nil {
+		return false, false, nil
+	}
+	switch val.Type() {
+	case object.BREAK_OBJ:
+		return true, false, nil
+	case object.CONTINUE_OBJ:
+		return false, false, nil
+	case object.RETURN_VALUE_OBJ, object.ERROR_OBJ:
+		return false, true, val
+	}
+	return false, false, nil
 }
 
 func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object {
@@ -451,8 +475,12 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 			}
 
 			val := Eval(node.Body, env)
-			if val != nil && (val.Type() == object.RETURN_VALUE_OBJ || val.Type() == object.ERROR_OBJ) {
-				return val
+			brk, ret, retVal := loopBodyResult(val)
+			if ret {
+				return retVal
+			}
+			if brk {
+				break
 			}
 		}
 	} else {
@@ -469,8 +497,12 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 				loopEnv := NewEnclosedEnvironment(env)
 				loopEnv.Set(iterName, &object.String{Value: string(ch)})
 				val := Eval(node.Body, loopEnv)
-				if val != nil && (val.Type() == object.RETURN_VALUE_OBJ || val.Type() == object.ERROR_OBJ) {
-					return val
+				brk, ret, retVal := loopBodyResult(val)
+				if ret {
+					return retVal
+				}
+				if brk {
+					break
 				}
 			}
 		case *object.Array:
@@ -478,8 +510,12 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 				loopEnv := NewEnclosedEnvironment(env)
 				loopEnv.Set(iterName, elem)
 				val := Eval(node.Body, loopEnv)
-				if val != nil && (val.Type() == object.RETURN_VALUE_OBJ || val.Type() == object.ERROR_OBJ) {
-					return val
+				brk, ret, retVal := loopBodyResult(val)
+				if ret {
+					return retVal
+				}
+				if brk {
+					break
 				}
 			}
 		case *object.Integer:
@@ -487,8 +523,12 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 				loopEnv := NewEnclosedEnvironment(env)
 				loopEnv.Set(iterName, &object.Integer{Value: i})
 				val := Eval(node.Body, loopEnv)
-				if val != nil && (val.Type() == object.RETURN_VALUE_OBJ || val.Type() == object.ERROR_OBJ) {
-					return val
+				brk, ret, retVal := loopBodyResult(val)
+				if ret {
+					return retVal
+				}
+				if brk {
+					break
 				}
 			}
 		case *object.Map:
@@ -497,8 +537,12 @@ func evalLoopStatement(node *ast.LoopStatement, env *Environment) object.Object 
 				loopEnv := NewEnclosedEnvironment(env)
 				loopEnv.Set(iterName, pair.Key)
 				val := Eval(node.Body, loopEnv)
-				if val != nil && (val.Type() == object.RETURN_VALUE_OBJ || val.Type() == object.ERROR_OBJ) {
-					return val
+				brk, ret, retVal := loopBodyResult(val)
+				if ret {
+					return retVal
+				}
+				if brk {
+					break
 				}
 			}
 		default:
@@ -520,6 +564,49 @@ func evalWithExpression(node *ast.WithExpression, env *Environment) object.Objec
 	}
 
 	return Eval(node.Body, newEnv)
+}
+
+func evalRangeExpression(node *ast.RangeExpression, env *Environment) object.Object {
+	startObj := Eval(node.Start, env)
+	if isError(startObj) {
+		return startObj
+	}
+	endObj := Eval(node.End, env)
+	if isError(endObj) {
+		return endObj
+	}
+
+	startInt, ok1 := startObj.(*object.Integer)
+	endInt, ok2 := endObj.(*object.Integer)
+	if !ok1 || !ok2 {
+		return newError("range operands must be integers, got %s and %s", startObj.Type(), endObj.Type())
+	}
+
+	start := startInt.Value
+	end := endInt.Value
+	if node.Inclusive {
+		end++
+	}
+
+	if start > end {
+		// Descending range
+		if node.Inclusive {
+			end -= 2 // undo the ++ above, then go one below
+		} else {
+			end--
+		}
+		elements := make([]object.Object, 0, start-end)
+		for i := start; i > end; i-- {
+			elements = append(elements, &object.Integer{Value: i})
+		}
+		return &object.Array{Elements: elements}
+	}
+
+	elements := make([]object.Object, 0, end-start)
+	for i := start; i < end; i++ {
+		elements = append(elements, &object.Integer{Value: i})
+	}
+	return &object.Array{Elements: elements}
 }
 
 func evalIndexExpression(node *ast.IndexExpression, env *Environment) object.Object {

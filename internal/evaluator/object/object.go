@@ -20,6 +20,8 @@ const (
 	BUILTIN_OBJ      = "BUILTIN"
 	ARRAY_OBJ        = "ARRAY"
 	MAP_OBJ          = "MAP"
+	BREAK_OBJ        = "BREAK"
+	CONTINUE_OBJ     = "CONTINUE"
 )
 
 type BuiltinFunction func(args ...Object) Object
@@ -99,6 +101,16 @@ func (a *Array) Inspect() string {
 	out.WriteString("]")
 	return out.String()
 }
+
+type Break struct{}
+
+func (b *Break) Type() ObjectType { return BREAK_OBJ }
+func (b *Break) Inspect() string  { return "break" }
+
+type Continue struct{}
+
+func (c *Continue) Type() ObjectType { return CONTINUE_OBJ }
+func (c *Continue) Inspect() string  { return "continue" }
 
 // HashKey is used as a map key for the Map object.
 type HashKey struct {

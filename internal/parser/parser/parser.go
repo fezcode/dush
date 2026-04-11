@@ -17,6 +17,7 @@ const (
 	LOGICAL     // && or ||
 	EQUALS      // ==
 	LESSGREATER // > or <
+	RANGE_PREC  // .. or ..=
 	SUM         // +
 	PRODUCT     // *
 	PREFIX      // -X or !X
@@ -34,6 +35,8 @@ var precedences = map[token.TokenType]int{
 	token.GT:       LESSGREATER,
 	token.APPEND:   LESSGREATER,
 	token.PIPE:     LESSGREATER,
+	token.RANGE:    RANGE_PREC,
+	token.RANGE_EQ: RANGE_PREC,
 	token.PLUS:     SUM,
 	token.MINUS:    SUM,
 	token.SLASH:    PRODUCT,
@@ -104,6 +107,8 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.APPEND, p.parseInfixExpression)
 	p.registerInfix(token.PIPE, p.parseInfixExpression)
 	p.registerInfix(token.ASSIGN, p.parseInfixExpression)
+	p.registerInfix(token.RANGE, p.parseRangeExpression)
+	p.registerInfix(token.RANGE_EQ, p.parseRangeExpression)
 	p.registerInfix(token.STDERR_GT, p.parseInfixExpression)
 	p.registerInfix(token.STDERR_APPEND, p.parseInfixExpression)
 	p.registerInfix(token.ALL_GT, p.parseInfixExpression)
@@ -163,6 +168,10 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseLoopStatement()
 	case token.RETURN:
 		return p.parseReturnStatement()
+	case token.BREAK:
+		return &ast.BreakStatement{Token: p.curToken}
+	case token.CONTINUE:
+		return &ast.ContinueStatement{Token: p.curToken}
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -1071,6 +1080,21 @@ func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 	exp := &ast.CallExpression{Token: p.curToken, Function: function}
 	exp.Arguments = p.parseCallArguments()
 	return exp
+}
+
+// parseRangeExpression: expr..expr or expr..=expr
+func (p *Parser) parseRangeExpression(left ast.Expression) ast.Expression {
+	expression := &ast.RangeExpression{
+		Token:     p.curToken,
+		Start:     left,
+		Inclusive: p.curToken.Type == token.RANGE_EQ,
+	}
+
+	precedence := p.curPrecedence()
+	p.nextToken()
+	expression.End = p.parseExpression(precedence)
+
+	return expression
 }
 
 // parseMethodCallExpression: expr.method() or expr.method(args)

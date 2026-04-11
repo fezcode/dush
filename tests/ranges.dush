@@ -1,0 +1,42 @@
+// Range literals — ITEMS.md #4
+
+// Exclusive range: 1..5 → [1, 2, 3, 4]
+@r = 1..5
+echo @r
+
+// Inclusive range: 1..=5 → [1, 2, 3, 4, 5]
+@r2 = 1..=5
+echo @r2
+
+// Range in a loop
+loop (@i : 1..=5) {
+    echo @i
+}
+
+// Range with variables
+@start = 3
+@end = 8
+loop (@i : @start..@end) {
+    echo @i
+}
+
+// Range methods (it's just an array)
+echo (1..=10).len()
+echo (1..5).join(", ")
+
+// Descending range
+@down = 5..=1
+echo @down
+
+// Range as loop source directly
+loop (@n : 0..3) {
+    echo "count: @n"
+}
+
+// Single element
+@one = 5..=5
+echo @one
+
+// Empty range
+@empty = 5..5
+echo @empty.len()
