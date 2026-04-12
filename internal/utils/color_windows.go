@@ -9,10 +9,10 @@ import (
 )
 
 func init() {
-	enableVirtualTerminalProcessing()
+	EnableVirtualTerminalProcessing()
 }
 
-func enableVirtualTerminalProcessing() {
+func EnableVirtualTerminalProcessing() {
 	const ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")

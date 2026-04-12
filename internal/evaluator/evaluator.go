@@ -7,6 +7,7 @@ import (
 	"dush/internal/builtins"
 	"dush/internal/evaluator/object"
 	"dush/internal/parser/ast"
+	"dush/internal/utils"
 	"errors"
 	"fmt"
 	"io"
@@ -878,6 +879,9 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 	}
 
 	err := cmd.Run()
+	// On Windows, some commands might disable VT processing, restore it here
+	utils.EnableVirtualTerminalProcessing()
+
 	var exitCode int64 = 0
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -1003,6 +1007,7 @@ func evalBackgroundCommand(node *ast.CommandExpression, cmdDesc string, env *Env
 
 	go func() {
 		err := cmd.Wait()
+		utils.EnableVirtualTerminalProcessing()
 		Jobs.MarkDone(job.ID, err)
 	}()
 

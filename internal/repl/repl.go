@@ -405,6 +405,8 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 			isTerminal = false
 			return
 		}
+		// On Windows, MakeRaw might reset console mode, ensuring VT is enabled again
+		utils.EnableVirtualTerminalProcessing()
 		t = term.NewTerminal(terminalIO{in, out}, "")
 		if w, h, sizeErr := term.GetSize(int(os.Stdout.Fd())); sizeErr == nil {
 			t.SetSize(w, h)
@@ -585,6 +587,8 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 
 			if isTerminal {
 				oldState, _ = term.MakeRaw(int(os.Stdin.Fd()))
+				// Restore VT processing on Windows after external commands
+				utils.EnableVirtualTerminalProcessing()
 			}
 		}
 	}
