@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 
+	"unicode/utf8"
+
 	"dush/internal/app"
 	"dush/internal/builtins"
 	"dush/internal/config"
@@ -23,6 +25,7 @@ import (
 	"dush/internal/prompt"
 	"dush/internal/utils"
 
+	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
 )
 
@@ -390,7 +393,21 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	// Called at startup and after Ctrl+C to reset the terminal state.
 	autoCompleteCb := func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
 		if key == '\t' {
-			return le.autoComplete(line, pos)
+			newLine, newPos, ok = le.autoComplete(line, pos)
+			if ok && le.out != nil {
+				// golang.org/x/term counts every rune as 1 display column, but
+				// East-Asian wide characters (e.g. fullwidth colon ：) occupy 2
+				// columns. This desync causes moveCursorToPos(0) in setLine to
+				// undershoot, leaving visual artifacts from the old line (e.g. a
+				// stray first character that can't be deleted).
+				// Compensate by nudging the real cursor back to where the term
+				// package *thinks* it is, then clearing residual characters.
+				extra := runewidth.StringWidth(line) - utf8.RuneCountInString(line)
+				if extra > 0 {
+					fmt.Fprintf(le.out, "\x1b[%dD\x1b[J", extra)
+				}
+			}
+			return
 		}
 		return "", 0, false
 	}
@@ -418,7 +435,7 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	}
 
 	if isTerminal {
-		le = &lineEditor{}
+		le = &lineEditor{out: out}
 		initTerminal()
 		if oldState != nil {
 			defer term.Restore(int(os.Stdin.Fd()), oldState)
