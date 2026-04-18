@@ -49,7 +49,7 @@ jobs                           # list running jobs
 - **File operations** -- `mkdir`, `mkfile`, `rm`, `touch` as builtins
 - **Directory stack** -- `pushdir`, `popdir`, `dirs`
 - **Signal trapping** -- `trap 'echo bye' EXIT`
-- **Interactive shell** -- history, tab completion (with cycling), `~/.dush/` config
+- **Interactive shell** -- history, tab completion (with cycling), reverse history search (`Ctrl+R`), `~/.dush/` config
 - **Cross-platform** -- Windows, Linux, macOS
 
 ## Install

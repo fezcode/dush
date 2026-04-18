@@ -7,12 +7,19 @@ type Lexer struct {
 	position     int  // current position in input (points to current char)
 	readPosition int  // current reading position in input (after current char)
 	ch           byte // current char under examination
+	errors       []string
 }
 
 func New(input string) *Lexer {
 	l := &Lexer{input: input}
 	l.readChar()
 	return l
+}
+
+// Errors returns any errors the lexer recorded while tokenizing (e.g.
+// unterminated string literals). Consumed by the parser's Errors().
+func (l *Lexer) Errors() []string {
+	return l.errors
 }
 
 func (l *Lexer) readChar() {
@@ -268,9 +275,10 @@ func (l *Lexer) readString() string {
 		}
 	}
 	result := l.input[position:l.position]
-	// Don't call l.readChar() here — NextToken's switch already consumed the opening ".
-	// The closing " is consumed by readChar at the end of NextToken.
-	// Actually this returns before the final readChar in NextToken, so we consume closing " here:
+	if l.ch == 0 {
+		l.errors = append(l.errors, "unterminated double-quoted string")
+		return result
+	}
 	l.readChar()
 	return result
 }
@@ -285,6 +293,10 @@ func (l *Lexer) readRawString() string {
 		}
 	}
 	result := l.input[position:l.position]
+	if l.ch == 0 {
+		l.errors = append(l.errors, "unterminated single-quoted string")
+		return result
+	}
 	l.readChar()
 	return result
 }

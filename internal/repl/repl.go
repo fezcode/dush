@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 
 	"unicode/utf8"
@@ -34,6 +35,7 @@ type lineEditor struct {
 	line   []rune
 	pos    int
 	out    io.Writer
+	io     *terminalIO // for reading input directly and injecting bytes during reverse search
 
 	// Tab completion state — tracks consecutive tabs for list/cycle behavior
 	lastTabLine string   // line content on previous tab press
@@ -45,9 +47,36 @@ type lineEditor struct {
 	tabQuoted   bool     // whether the arg was quoted
 }
 
+// terminalIO wraps the terminal's reader so we can inject bytes back into
+// the stream (used by reverse search to auto-submit the selected match by
+// feeding a synthetic Enter to the term package after the callback returns).
 type terminalIO struct {
-	io.Reader
-	io.Writer
+	r   io.Reader
+	w   io.Writer
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (t *terminalIO) Read(p []byte) (int, error) {
+	t.mu.Lock()
+	if len(t.buf) > 0 {
+		n := copy(p, t.buf)
+		t.buf = t.buf[n:]
+		t.mu.Unlock()
+		return n, nil
+	}
+	t.mu.Unlock()
+	return t.r.Read(p)
+}
+
+func (t *terminalIO) Write(p []byte) (int, error) {
+	return t.w.Write(p)
+}
+
+func (t *terminalIO) Inject(data []byte) {
+	t.mu.Lock()
+	t.buf = append(t.buf, data...)
+	t.mu.Unlock()
 }
 
 func (le *lineEditor) resetTabState() {
@@ -392,24 +421,28 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 	// initTerminal creates (or recreates) the terminal in raw mode.
 	// Called at startup and after Ctrl+C to reset the terminal state.
 	autoCompleteCb := func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
-		if key == '\t' {
+		switch key {
+		case '\t':
 			newLine, newPos, ok = le.autoComplete(line, pos)
-			if ok && le.out != nil {
-				// golang.org/x/term counts every rune as 1 display column, but
-				// East-Asian wide characters (e.g. fullwidth colon ：) occupy 2
-				// columns. This desync causes moveCursorToPos(0) in setLine to
-				// undershoot, leaving visual artifacts from the old line (e.g. a
-				// stray first character that can't be deleted).
-				// Compensate by nudging the real cursor back to where the term
-				// package *thinks* it is, then clearing residual characters.
-				extra := runewidth.StringWidth(line) - utf8.RuneCountInString(line)
-				if extra > 0 {
-					fmt.Fprintf(le.out, "\x1b[%dD\x1b[J", extra)
-				}
-			}
-			return
+		case 0x12: // Ctrl+R — reverse history search
+			newLine, newPos, ok = le.reverseSearch(line, pos)
+		default:
+			return "", 0, false
 		}
-		return "", 0, false
+		if ok && le.out != nil {
+			// golang.org/x/term counts every rune as 1 display column, but
+			// East-Asian wide characters (e.g. fullwidth colon ：) occupy 2
+			// columns. This desync causes moveCursorToPos(0) in setLine to
+			// undershoot, leaving visual artifacts from the old line (e.g. a
+			// stray first character that can't be deleted).
+			// Compensate by nudging the real cursor back to where the term
+			// package *thinks* it is, then clearing residual characters.
+			extra := runewidth.StringWidth(line) - utf8.RuneCountInString(line)
+			if extra > 0 {
+				fmt.Fprintf(le.out, "\x1b[%dD\x1b[J", extra)
+			}
+		}
+		return
 	}
 	initTerminal := func() {
 		if oldState != nil {
@@ -424,7 +457,8 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		}
 		// On Windows, MakeRaw might reset console mode, ensuring VT is enabled again
 		utils.EnableVirtualTerminalProcessing()
-		t = term.NewTerminal(terminalIO{in, out}, "")
+		le.io = &terminalIO{r: in, w: out}
+		t = term.NewTerminal(le.io, "")
 		if w, h, sizeErr := term.GetSize(int(os.Stdout.Fd())); sizeErr == nil {
 			t.SetSize(w, h)
 		}
@@ -488,6 +522,7 @@ func Start(in io.Reader, out io.Writer, errOut io.Writer) {
 		var line string
 		if isTerminal {
 			t.SetPrompt(promptLine)
+			le.prompt = promptLine
 			line, err = t.ReadLine()
 			if err != nil {
 				if err == io.EOF {

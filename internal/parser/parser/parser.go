@@ -125,7 +125,14 @@ func New(l *lexer.Lexer) *Parser {
 }
 
 func (p *Parser) Errors() []string {
-	return p.errors
+	lexErrs := p.l.Errors()
+	if len(lexErrs) == 0 {
+		return p.errors
+	}
+	out := make([]string, 0, len(p.errors)+len(lexErrs))
+	out = append(out, lexErrs...)
+	out = append(out, p.errors...)
+	return out
 }
 
 func (p *Parser) nextToken() {

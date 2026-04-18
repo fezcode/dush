@@ -20,6 +20,9 @@ func (c *CDCommand) Execute(ctx context.Context, args []string, out io.Writer, e
 		fmt.Fprintln(out, "Usage: cd [directory]\nChange the current working directory.\n\nWith no arguments, changes to the home directory.\nUse 'cd -' to return to the previous directory.")
 		return nil
 	}
+	if len(args) > 1 {
+		return fmt.Errorf("cd: too many arguments")
+	}
 
 	appInstance := app.GetApp()
 	currentDir := appInstance.GetCurrentDir()

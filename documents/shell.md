@@ -92,6 +92,18 @@ source script.dush
 . script.dush              // shorthand
 ```
 
+## Interactive Keys
+
+| Key        | Action                                       |
+|------------|----------------------------------------------|
+| `Tab`      | Complete / cycle through matches             |
+| `Ctrl+R`   | Reverse incremental history search           |
+| `Enter`    | (during Ctrl+R) accept the current match     |
+| `Esc` / `Ctrl+G` / `Ctrl+C` | (during Ctrl+R) cancel         |
+| `Backspace`| (during Ctrl+R) shorten the search pattern   |
+
+Unterminated quotes (`'` or `"`) make dush prompt for a continuation line, the same way unclosed braces do.
+
 ## Signal Trapping
 
 ```
