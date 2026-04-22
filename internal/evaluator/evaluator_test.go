@@ -1,10 +1,12 @@
 package evaluator
 
 import (
+	"bytes"
 	"dush/internal/evaluator/object"
 	"dush/internal/parser/lexer"
 	"dush/internal/parser/parser"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -1353,6 +1355,101 @@ func TestScriptArgsDefaultEmpty(t *testing.T) {
 	s, ok := evalWith(`@SCRIPT`).(*object.String)
 	if !ok || s.Value != "" {
 		t.Errorf("default @SCRIPT expected \"\", got %+v", evalWith(`@SCRIPT`))
+	}
+}
+
+// === Shell modes: strict / trace / pipefail ===
+
+// Captures stdout+stderr while running the given source on a fresh environment.
+func evalWithBuffers(input string) (stdout, stderr string, last object.Object) {
+	var soutBuf, serrBuf bytes.Buffer
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	env := NewEnvironment()
+	env.Stdout = &soutBuf
+	env.Stderr = &serrBuf
+	last = Eval(prog, env)
+	return soutBuf.String(), serrBuf.String(), last
+}
+
+func TestTraceModeBarePrintsEachCommand(t *testing.T) {
+	_, stderr, _ := evalWithBuffers(`trace on; echo a; echo b; trace off; echo c`)
+	if !strings.Contains(stderr, "+ echo a") {
+		t.Errorf("expected trace line '+ echo a' in stderr, got: %q", stderr)
+	}
+	if !strings.Contains(stderr, "+ echo b") {
+		t.Errorf("expected trace line '+ echo b' in stderr, got: %q", stderr)
+	}
+	if strings.Contains(stderr, "+ echo c") {
+		t.Errorf("did not expect 'echo c' traced after trace off, got: %q", stderr)
+	}
+}
+
+func TestTraceModeBlockScoped(t *testing.T) {
+	_, stderr, _ := evalWithBuffers(`trace on { echo inside }; echo outside`)
+	if !strings.Contains(stderr, "+ echo inside") {
+		t.Errorf("expected trace for inside, got: %q", stderr)
+	}
+	if strings.Contains(stderr, "+ echo outside") {
+		t.Errorf("trace should not leak after block, got: %q", stderr)
+	}
+}
+
+func TestStrictModeBlockAbortsBlockNotScript(t *testing.T) {
+	// The block contains a failing command; strict should abort the block.
+	// The "after" line must still run.
+	stdout, _, _ := evalWithBuffers(`
+		strict on {
+			echo before
+			nonexistent-cmd-xyzzy
+			echo inside-after-fail
+		}
+		echo after
+	`)
+	if !strings.Contains(stdout, "before") {
+		t.Errorf("expected 'before' in stdout, got: %q", stdout)
+	}
+	if strings.Contains(stdout, "inside-after-fail") {
+		t.Errorf("strict should have aborted the block before this line, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "after") {
+		t.Errorf("script should continue after a strict block, got: %q", stdout)
+	}
+}
+
+func TestStrictModeOffDoesNotAbort(t *testing.T) {
+	stdout, _, _ := evalWithBuffers(`
+		strict off
+		echo before
+		nonexistent-cmd-xyzzy
+		echo after-fail
+	`)
+	if !strings.Contains(stdout, "before") || !strings.Contains(stdout, "after-fail") {
+		t.Errorf("without strict, both lines should run. stdout=%q", stdout)
+	}
+}
+
+func TestPipefailOnExposesEarlyStageFailure(t *testing.T) {
+	// nonexistent-xyzzy | echo ok — last stage succeeds, left stage fails.
+	// Without pipefail: LAST_STATUS is the right stage (0).
+	// With pipefail:    LAST_STATUS is the first non-zero (left, 1).
+	stdoutOff, _, _ := evalWithBuffers(`
+		pipefail off
+		nonexistent-cmd-xyzzy | echo ok
+		echo "status=@LAST_STATUS"
+	`)
+	if !strings.Contains(stdoutOff, "status=0") {
+		t.Errorf("without pipefail: expected status=0, got stdout=%q", stdoutOff)
+	}
+
+	stdoutOn, _, _ := evalWithBuffers(`
+		pipefail on
+		nonexistent-cmd-xyzzy | echo ok
+		echo "status=@LAST_STATUS"
+	`)
+	if !strings.Contains(stdoutOn, "status=1") {
+		t.Errorf("with pipefail: expected status=1 (left-stage failure), got stdout=%q", stdoutOn)
 	}
 }
 

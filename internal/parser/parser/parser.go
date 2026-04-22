@@ -179,6 +179,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return &ast.BreakStatement{Token: p.curToken}
 	case token.CONTINUE:
 		return &ast.ContinueStatement{Token: p.curToken}
+	case token.STRICT, token.TRACE, token.PIPEFAIL:
+		return p.parseModeStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -903,6 +905,33 @@ func (p *Parser) parseMatchExpression() ast.Expression {
 	}
 
 	return expression
+}
+
+// parseModeStatement handles `strict on`, `trace off`, `pipefail on { block }`.
+func (p *Parser) parseModeStatement() *ast.ModeStatement {
+	stmt := &ast.ModeStatement{Token: p.curToken, Mode: strings.ToLower(p.curToken.Literal)}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	switch strings.ToLower(p.curToken.Literal) {
+	case "on":
+		stmt.Enable = true
+	case "off":
+		stmt.Enable = false
+	default:
+		p.errors = append(p.errors,
+			fmt.Sprintf("expected 'on' or 'off' after '%s', got %q", stmt.Mode, p.curToken.Literal))
+		return nil
+	}
+
+	// Optional scoped block: `strict on { ... }`
+	if p.peekTokenIs(token.LBRACE) {
+		p.nextToken() // move onto {
+		stmt.Block = p.parseBlockStatement()
+	}
+
+	return stmt
 }
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {

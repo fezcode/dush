@@ -296,6 +296,30 @@ func (cs *ContinueStatement) statementNode()       {}
 func (cs *ContinueStatement) TokenLiteral() string { return cs.Token.Literal }
 func (cs *ContinueStatement) String() string       { return "continue" }
 
+// ModeStatement: `strict on`, `trace off`, `pipefail on { ... }`.
+// When Block is nil the mode flip is permanent for the current scope; when Block
+// is non-nil the flip is scoped to the block and reverts on exit.
+type ModeStatement struct {
+	Token  token.Token // the STRICT / TRACE / PIPEFAIL keyword
+	Mode   string      // "strict" | "trace" | "pipefail"
+	Enable bool        // true for "on", false for "off"
+	Block  *BlockStatement
+}
+
+func (ms *ModeStatement) statementNode()       {}
+func (ms *ModeStatement) TokenLiteral() string { return ms.Token.Literal }
+func (ms *ModeStatement) String() string {
+	state := "on"
+	if !ms.Enable {
+		state = "off"
+	}
+	out := ms.Mode + " " + state
+	if ms.Block != nil {
+		out += " { ... }"
+	}
+	return out
+}
+
 // PrefixExpression: -5, !true
 type PrefixExpression struct {
 	Token    token.Token

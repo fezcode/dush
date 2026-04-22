@@ -89,6 +89,8 @@ func Eval(node ast.Node, env *Environment) object.Object {
 		return &object.Break{}
 	case *ast.ContinueStatement:
 		return &object.Continue{}
+	case *ast.ModeStatement:
+		return evalModeStatement(node, env)
 	case *ast.Identifier:
 		return evalIdentifier(node, env)
 	case *ast.CommandExpression:
@@ -284,13 +286,42 @@ func evalShellOperation(node *ast.InfixExpression, env *Environment) object.Obje
 		rightEnv := NewEnclosedEnvironment(env)
 		rightEnv.Stdin = pr
 
+		// Exit code is derived from what Eval returns — avoids racing on
+		// LAST_STATUS which lives on the shared root env.
+		statusOf := func(o object.Object) int64 {
+			if isError(o) {
+				return 1
+			}
+			if b, ok := o.(*object.Boolean); ok && !b.Value {
+				return 1
+			}
+			return 0
+		}
+
+		leftDone := make(chan int64, 1)
 		go func() {
-			Eval(node.Left, leftEnv)
+			lr := Eval(node.Left, leftEnv)
 			pw.Close()
+			leftDone <- statusOf(lr)
 		}()
 
 		res := Eval(node.Right, rightEnv)
 		pr.Close()
+		leftStatus := <-leftDone
+		rightStatus := statusOf(res)
+
+		finalStatus := rightStatus
+		if env.GetMode("pipefail") && leftStatus != 0 {
+			finalStatus = leftStatus
+		}
+		env.ShellSet("LAST_STATUS", &object.Integer{Value: finalStatus})
+
+		if finalStatus != 0 && env.GetMode("strict") {
+			return newError("strict: pipeline exited with status %d", finalStatus)
+		}
+		if finalStatus != 0 {
+			return nativeBoolToBooleanObject(false)
+		}
 		return res
 
 	case ">", ">>":
@@ -782,6 +813,40 @@ func evalIdentifier(node *ast.Identifier, env *Environment) object.Object {
 	return evalCommandExpression(cmdNode, env)
 }
 
+// evalModeStatement implements `strict on`, `trace off`, `pipefail on { block }`.
+// Bare form persists in the current scope. Block form evaluates the block in a
+// new enclosed env with the flag set; on exit the inherited env restores the
+// prior mode automatically.
+//
+// A strict-induced abort inside the scoped block does NOT escape the block:
+// the block stops, LAST_STATUS is left non-zero, and the enclosing script
+// continues. This keeps strict useful as a "group these steps, stop the group
+// on any failure" primitive without forcing you to wrap everything in try/catch.
+func evalModeStatement(node *ast.ModeStatement, env *Environment) object.Object {
+	if node.Block == nil {
+		env.SetMode(node.Mode, node.Enable)
+		return NULL
+	}
+	scoped := NewEnclosedEnvironment(env)
+	scoped.SetMode(node.Mode, node.Enable)
+	res := evalBlockStatement(node.Block, scoped)
+	if errObj, ok := res.(*object.Error); ok && strings.HasPrefix(errObj.Message, "strict:") {
+		// Block aborted cleanly — swallow the signal, surface via LAST_STATUS.
+		return nativeBoolToBooleanObject(false)
+	}
+	return res
+}
+
+// traceCommand prints a command and its resolved args to stderr prefixed with
+// "+ ", like bash's `set -x` but always on the actual executed form.
+func traceCommand(name string, args []string, env *Environment) {
+	fmt.Fprint(env.Stderr, "+ ", name)
+	for _, a := range args {
+		fmt.Fprint(env.Stderr, " ", a)
+	}
+	fmt.Fprintln(env.Stderr)
+}
+
 func evalCommandExpression(node *ast.CommandExpression, env *Environment) object.Object {
 	var args []string
 	for _, argExpr := range node.Args {
@@ -833,6 +898,10 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 		args = append(args, argStr)
 	}
 
+	if env.GetMode("trace") {
+		traceCommand(node.Name, args, env)
+	}
+
 	if node.Name == "source" || node.Name == "." {
 		if len(args) != 1 {
 			fmt.Fprintf(env.Stderr, "%s: filename argument required\n", node.Name)
@@ -858,6 +927,9 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 			exitCode = 1
 		}
 		env.ShellSet("LAST_STATUS", &object.Integer{Value: exitCode})
+		if exitCode != 0 && env.GetMode("strict") {
+			return newError("strict: '%s' exited with status %d", node.Name, exitCode)
+		}
 		return nativeBoolToBooleanObject(exitCode == 0)
 	}
 
@@ -893,6 +965,9 @@ func evalCommandExpression(node *ast.CommandExpression, env *Environment) object
 	}
 
 	env.ShellSet("LAST_STATUS", &object.Integer{Value: exitCode})
+	if exitCode != 0 && env.GetMode("strict") {
+		return newError("strict: '%s' exited with status %d", node.Name, exitCode)
+	}
 	return nativeBoolToBooleanObject(exitCode == 0)
 }
 

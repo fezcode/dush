@@ -26,6 +26,44 @@ type Environment struct {
 	Stdin     io.Reader
 	Stdout    io.Writer
 	Stderr    io.Writer
+
+	// Shell modes (nil = inherit from outer, &true/&false = explicit).
+	strict   *bool
+	trace    *bool
+	pipefail *bool
+}
+
+// GetMode returns the effective boolean for one of "strict" / "trace" / "pipefail",
+// walking up enclosing environments (scoped-block support).
+func (e *Environment) GetMode(name string) bool {
+	for cur := e; cur != nil; cur = cur.outer {
+		var ptr *bool
+		switch name {
+		case "strict":
+			ptr = cur.strict
+		case "trace":
+			ptr = cur.trace
+		case "pipefail":
+			ptr = cur.pipefail
+		}
+		if ptr != nil {
+			return *ptr
+		}
+	}
+	return false
+}
+
+// SetMode stores an explicit mode value in this scope (no outer walk).
+func (e *Environment) SetMode(name string, val bool) {
+	v := val
+	switch name {
+	case "strict":
+		e.strict = &v
+	case "trace":
+		e.trace = &v
+	case "pipefail":
+		e.pipefail = &v
+	}
 }
 
 func NewEnvironment() *Environment {

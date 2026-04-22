@@ -310,6 +310,24 @@ These are populated by the shell and cannot be reassigned:
 - `@SCRIPT` — path of the running script (empty in interactive mode)
 - `@ARGS` — array of arguments passed to the script
 
+## 10a. Shell Modes
+
+Three directives toggle language-level behavior for the current scope. Each takes `on` or `off`, with an optional block form that scopes the effect and reverts on exit.
+
+| Directive     | Effect                                                                  |
+|---------------|-------------------------------------------------------------------------|
+| `strict on`   | Abort the enclosing scope (script or block) on the first non-zero exit |
+| `trace on`    | Print each command with resolved args to stderr, prefixed `+ `         |
+| `pipefail on` | Pipeline status = first non-zero stage instead of the last stage's     |
+
+```
+strict on              # rest of script: stop on first failure
+trace on { cmd }       # block only
+pipefail off           # inverse
+```
+
+Scoped-block strict aborts the block but does **not** propagate out — the outer script keeps going. Use `LAST_STATUS` to check after the block.
+
 ## 11. Built-in Functions
 
 | Function | Description |
@@ -471,18 +489,6 @@ try {
     echo "failed: @err"
 }
 throw "bad state"
-```
-
-**Shell mode directives** — bare commands like `trap`, with an optional block form:
-```
-strict on               # abort on any non-zero exit
-trace on                # print each command before running
-pipefail on             # pipeline status = last non-zero stage
-
-strict on {
-    cmd1
-    cmd2                # aborts if either fails; reverts after the block
-}
 ```
 
 Other items still on the list:

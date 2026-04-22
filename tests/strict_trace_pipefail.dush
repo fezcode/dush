@@ -1,0 +1,33 @@
+// Shell mode directives: strict, trace, pipefail.
+// See documents/shell.md for full explanations.
+
+echo "--- trace on { ... } ---"
+trace on {
+    echo "hello from traced block"
+    echo "and another"
+}
+echo "back to untraced"
+
+echo ""
+echo "--- strict on { ... } aborts the block on first failure ---"
+strict on {
+    echo "before the failing command"
+    // An unknown command returns non-zero; strict aborts here.
+    this-command-does-not-exist
+    echo "this line will NOT run"
+}
+// But strict is scope-local to the block — script execution continues after it.
+echo "still running after the strict block"
+
+echo ""
+echo "--- pipefail on makes pipeline status = first non-zero stage ---"
+// With pipefail OFF (default), the pipeline's status is just the last stage.
+pipefail off
+nonexistent-xyz | echo "last stage succeeded"
+echo "LAST_STATUS without pipefail: @LAST_STATUS   (0 — last stage won)"
+
+// With pipefail ON, an earlier-stage non-zero propagates.
+pipefail on
+nonexistent-xyz | echo "last stage succeeded"
+echo "LAST_STATUS with pipefail:    @LAST_STATUS   (non-zero — left stage failed)"
+pipefail off

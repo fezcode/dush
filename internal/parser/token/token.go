@@ -86,6 +86,10 @@ const (
 	BREAK    = "BREAK"
 	CONTINUE = "CONTINUE"
 
+	STRICT   = "STRICT"
+	TRACE    = "TRACE"
+	PIPEFAIL = "PIPEFAIL"
+
 	// Legacy (kept as constant, removed from keywords map)
 	SAVE = "SAVE"
 )
@@ -106,6 +110,9 @@ var keywords = map[string]TokenType{
 	"case":     CASE,
 	"break":    BREAK,
 	"continue": CONTINUE,
+	"strict":   STRICT,
+	"trace":    TRACE,
+	"pipefail": PIPEFAIL,
 }
 
 func LookupIdent(ident string) TokenType {

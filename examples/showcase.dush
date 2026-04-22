@@ -375,6 +375,29 @@ if (@ARGS.len() > 0) {
 }
 
 echo ""
+echo "--- Shell modes: strict / trace / pipefail ---"
+// `trace on { ... }` echoes each command before it runs.
+trace on {
+    echo "traced-line-one"
+    echo "traced-line-two"
+}
+echo "back to untraced"
+
+// `strict on { ... }` aborts the block on first failure (script keeps going).
+strict on {
+    echo "group-step-1"
+    // The block aborts here if the next command fails.
+    echo "group-step-2"
+}
+echo "LAST_STATUS after strict block: @LAST_STATUS"
+
+// `pipefail on` makes pipelines report the first non-zero stage instead
+// of the last. See tests/strict_trace_pipefail.dush for a runnable demo.
+pipefail on
+echo "one" | echo "two passes through"
+pipefail off
+
+echo ""
 echo "--- chomp + inline command substitution ---"
 @greeting = save(echo hello-from-subshell).chomp()
 echo "captured: <@greeting>"
