@@ -75,8 +75,9 @@ Features to make dush a better shell. Not chasing bash compatibility — buildin
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 31 | `set -e` equivalent (fail-fast mode) | `[ ]` | Stop script on first error. Could be `strict` mode or pragma. |
-| 32 | Debug tracing (`set -x`) | `[ ]` | Print each command before execution. Useful for debugging scripts. |
+| 31 | `strict on` / `strict on { ... }` | `[ ]` ROADMAP | Abort on first non-zero exit. Bare form = scope-wide, block form = scoped. Replaces bash's `set -e`. |
+| 32 | `trace on` / `trace on { ... }` | `[ ]` ROADMAP | Print each command before running it. Replaces bash's `set -x`. |
+| 32a | `pipefail on` | `[ ]` ROADMAP | Pipeline status = last non-zero stage. |
 | 33 | `eval` (dynamic code execution) | `[ ]` | `eval("@x + 1")`. Dangerous but sometimes needed. |
 | 34 | Programmable tab completion API | `[ ]` | Let users define completions for their own procs. |
 | 35 | `mapfile` / read lines into array | `[ ]` | `@lines = lines("file.txt")` or `save(cat file) | split("\n")`. Needs array literals first. |

@@ -371,12 +371,22 @@ try {
 throw "bad state"
 ```
 
-**Strict / trace / pipefail** via scoped `with`:
+**Shell mode directives** — bare commands that toggle a mode, like `trap`:
 ```
-with (strict = true, trace = true) {
+strict on               // abort the script on any non-zero exit
+trace on                // print each command before running it
+pipefail on             // pipeline status = last non-zero stage
+
+strict off              // and the inverse
+```
+
+Optional block form applies the mode only to the enclosed statements:
+```
+strict on {
     cmd1
-    cmd2   // aborts on any non-zero
+    cmd2                // aborts if either fails
 }
+// strict is back to whatever it was before the block
 ```
 
 Other items still on the list:

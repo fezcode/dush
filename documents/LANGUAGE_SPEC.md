@@ -460,10 +460,33 @@ echo "Welcome back, @USER_NAME!"
 ```
 
 ## 14. Roadmap
-- Globbing: `ls *.go`
-- Map type: `@m = {"key": "value"}`
-- Array literals: `@arr = [1, 2, 3]`
-- Index expressions: `@arr[0]`
-- Error handling patterns
-- Signal trapping
-- Here-docs
+
+Proposed syntax is dush-native — no `$1` / `$(...)` / `set -e` / `!!` borrowings.
+
+**Error handling:**
+```
+try {
+    risky()
+} catch (@err) {
+    echo "failed: @err"
+}
+throw "bad state"
+```
+
+**Shell mode directives** — bare commands like `trap`, with an optional block form:
+```
+strict on               # abort on any non-zero exit
+trace on                # print each command before running
+pipefail on             # pipeline status = last non-zero stage
+
+strict on {
+    cmd1
+    cmd2                # aborts if either fails; reverts after the block
+}
+```
+
+Other items still on the list:
+- Here-docs (`<<EOF ... EOF`)
+- Regex match with captures
+- JSON parse/stringify builtins
+- HTTP fetch builtin
