@@ -1197,6 +1197,165 @@ func TestJobListOrdering(t *testing.T) {
 	}
 }
 
+// === String escapes, @ARGS/@SCRIPT, .chomp(), quote-safe @{...} ===
+
+func TestStringEscapes(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`"a\nb"`, "a\nb"},
+		{`"a\tb"`, "a\tb"},
+		{`"a\rb"`, "a\rb"},
+		{`"a\0b"`, "a\x00b"},
+		{`"a\\b"`, `a\b`},
+		{`"a\"b"`, `a"b`},
+		{`"a\'b"`, "a'b"},
+		{`"\@name"`, "@name"},
+		{`"\x41\x42"`, "AB"},
+		{`"\u{1F600}"`, "😀"},
+		{`"\u{41}"`, "A"},
+		// Unknown escape is kept literal (forgiving).
+		{`"\q"`, `\q`},
+		// Raw single-quoted strings are untouched.
+		{`'a\nb'`, `a\nb`},
+		{`'\@name'`, `\@name`},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		strObj, ok := evaluated.(*object.String)
+		if !ok {
+			t.Errorf("input %q: expected String, got %T (%+v)", tt.input, evaluated, evaluated)
+			continue
+		}
+		if strObj.Value != tt.expected {
+			t.Errorf("input %q: expected %q, got %q", tt.input, tt.expected, strObj.Value)
+		}
+	}
+}
+
+func TestStringChomp(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`"hello\n".chomp()`, "hello"},
+		{`"hello\r\n".chomp()`, "hello"},
+		{`"hello".chomp()`, "hello"},
+		{`"hello\n\n".chomp()`, "hello\n"}, // only one trailing newline is stripped
+		{`"".chomp()`, ""},
+		{`"\n".chomp()`, ""},
+		{`"\r\n".chomp()`, ""},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		strObj, ok := evaluated.(*object.String)
+		if !ok {
+			t.Errorf("input %q: expected String, got %T (%+v)", tt.input, evaluated, evaluated)
+			continue
+		}
+		if strObj.Value != tt.expected {
+			t.Errorf("input %q: expected %q, got %q", tt.input, tt.expected, strObj.Value)
+		}
+	}
+}
+
+func TestQuoteSafeInterpolation(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		// Inner " inside @{...} is literal, no escaping needed.
+		{`@items = ["a", "b"]; "list: @{@items.join(", ")}"`, "list: a, b"},
+		// Mixed literal text + interpolation + method chain.
+		{`@n = "world"; "hello @{@n.upper()}!"`, "hello WORLD!"},
+		// Arithmetic expression inside @{}.
+		{`"sum: @{1 + 2 + 3}"`, "sum: 6"},
+		// \@ suppresses interpolation; @{} still interpolates after.
+		{`@x = 7; "\@x is not @x, but @{@x} is"`, "@x is not 7, but 7 is"},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		strObj, ok := evaluated.(*object.String)
+		if !ok {
+			t.Errorf("input %q: expected String, got %T (%+v)", tt.input, evaluated, evaluated)
+			continue
+		}
+		if strObj.Value != tt.expected {
+			t.Errorf("input %q: expected %q, got %q", tt.input, tt.expected, strObj.Value)
+		}
+	}
+}
+
+func TestScriptArgs(t *testing.T) {
+	env := NewEnvironment()
+	env.SetScriptArgs("/tmp/foo.dush", []string{"one", "two", "three"})
+
+	evalWith := func(input string) object.Object {
+		l := lexer.New(input)
+		p := parser.New(l)
+		return Eval(p.ParseProgram(), env)
+	}
+
+	// @SCRIPT
+	s, ok := evalWith(`@SCRIPT`).(*object.String)
+	if !ok {
+		t.Fatalf("@SCRIPT: expected String, got %T", evalWith(`@SCRIPT`))
+	}
+	if s.Value != "/tmp/foo.dush" {
+		t.Errorf("@SCRIPT = %q, want %q", s.Value, "/tmp/foo.dush")
+	}
+
+	// @ARGS.len()
+	n, ok := evalWith(`@ARGS.len()`).(*object.Integer)
+	if !ok {
+		t.Fatalf("@ARGS.len(): expected Integer, got %T", evalWith(`@ARGS.len()`))
+	}
+	if n.Value != 3 {
+		t.Errorf("@ARGS.len() = %d, want 3", n.Value)
+	}
+
+	// Indexing
+	first, ok := evalWith(`@ARGS[0]`).(*object.String)
+	if !ok {
+		t.Fatalf("@ARGS[0]: expected String, got %T", evalWith(`@ARGS[0]`))
+	}
+	if first.Value != "one" {
+		t.Errorf("@ARGS[0] = %q, want %q", first.Value, "one")
+	}
+
+	// Join
+	j, ok := evalWith(`@ARGS.join(" | ")`).(*object.String)
+	if !ok {
+		t.Fatalf("@ARGS.join: expected String, got %T", evalWith(`@ARGS.join(" | ")`))
+	}
+	if j.Value != "one | two | three" {
+		t.Errorf("@ARGS.join = %q", j.Value)
+	}
+}
+
+func TestScriptArgsDefaultEmpty(t *testing.T) {
+	// A fresh env (no SetScriptArgs call) should have empty @ARGS and empty @SCRIPT.
+	env := NewEnvironment()
+	evalWith := func(input string) object.Object {
+		l := lexer.New(input)
+		p := parser.New(l)
+		return Eval(p.ParseProgram(), env)
+	}
+
+	n, ok := evalWith(`@ARGS.len()`).(*object.Integer)
+	if !ok || n.Value != 0 {
+		t.Errorf("default @ARGS.len() expected 0, got %+v", evalWith(`@ARGS.len()`))
+	}
+	s, ok := evalWith(`@SCRIPT`).(*object.String)
+	if !ok || s.Value != "" {
+		t.Errorf("default @SCRIPT expected \"\", got %+v", evalWith(`@SCRIPT`))
+	}
+}
+
 // === Helpers ===
 
 func testEval(input string) object.Object {

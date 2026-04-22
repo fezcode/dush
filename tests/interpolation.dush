@@ -1,0 +1,30 @@
+// String interpolation — @name, @{expr}, and method chains inside "...".
+
+@name = "world"
+@items = ["a", "b", "c"]
+@user = {"name": "alice", "role": "admin"}
+
+// --- Simple variable interpolation ---
+echo "hello @name"                       // hello world
+echo "items count: @{@items.len()}"      // items count: 3
+
+// --- Method calls inside @{} ---
+echo "upper: @{@name.upper()}"           // upper: WORLD
+echo "list: @{@items.join(", ")}"         // list: a, b, c   (inner " NOT escaped)
+
+// --- Arithmetic / arbitrary expressions ---
+@x = 7
+echo "square: @{@x * @x}"                 // square: 49
+echo "range: @{(1..5).join(",")}"         // (if range is iterable + has .join)
+
+// --- Chained method + arithmetic ---
+echo "shout: @{@name.upper() + "!!!"}"    // shout: WORLD!!!
+
+// --- Map access ---
+echo "user: @{@user["name"]} (@{@user["role"]})"
+
+// --- Nested interpolations are fine — braces are tracked by depth ---
+echo "wrapped: [@{@items.map(proc(@s) { return "<" + @s + ">" }).join("")}]"
+
+// --- \@ keeps @ literal ---
+echo "email-ish: name\@example.com"

@@ -2,6 +2,7 @@ package lexer
 
 import (
 	"dush/internal/parser/token"
+	"strings"
 	"testing"
 )
 
@@ -545,3 +546,65 @@ func TestNonKeywordIdentifiers(t *testing.T) {
 		}
 	}
 }
+
+func TestUnterminatedStrings(t *testing.T) {
+	tests := []struct {
+		input       string
+		wantErrPart string // substring that should appear in the lexer error
+	}{
+		{`"hello`, "unterminated double-quoted string"},
+		{`'hello`, "unterminated single-quoted string"},
+		{`cd ..\'`, "unterminated single-quoted string"},
+		{`echo "a\"b`, "unterminated double-quoted string"},
+	}
+
+	for _, tt := range tests {
+		l := New(tt.input)
+		// Drain all tokens so the lexer walks the whole input.
+		for tok := l.NextToken(); tok.Type != token.EOF; tok = l.NextToken() {
+		}
+		errs := l.Errors()
+		if len(errs) == 0 {
+			t.Errorf("input %q: expected lexer error, got none", tt.input)
+			continue
+		}
+		found := false
+		for _, e := range errs {
+			if strings.Contains(e, tt.wantErrPart) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("input %q: expected error containing %q, got %v", tt.input, tt.wantErrPart, errs)
+		}
+	}
+}
+
+func TestStringsWithEscapesStayIntact(t *testing.T) {
+	// Verifies the lexer doesn't terminate early on \" and doesn't eat @{...} " either.
+	tests := []struct {
+		input       string
+		wantLiteral string // what readString should emit as the token literal
+	}{
+		{`"a\"b"`, `a\"b`},                 // \" does not terminate
+		{`"a\\b"`, `a\\b`},                 // \\ stays in literal
+		{`"@{x("inner")}"`, `@{x("inner")}`}, // inner " inside @{} is literal
+	}
+
+	for _, tt := range tests {
+		l := New(tt.input)
+		tok := l.NextToken()
+		if tok.Type != token.STRING {
+			t.Errorf("input %q: expected STRING, got %s", tt.input, tok.Type)
+			continue
+		}
+		if tok.Literal != tt.wantLiteral {
+			t.Errorf("input %q: literal = %q, want %q", tt.input, tok.Literal, tt.wantLiteral)
+		}
+		if errs := l.Errors(); len(errs) != 0 {
+			t.Errorf("input %q: unexpected lexer errors %v", tt.input, errs)
+		}
+	}
+}
+

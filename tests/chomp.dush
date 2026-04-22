@@ -1,0 +1,17 @@
+// .chomp() — strip a single trailing \n or \r\n.
+// Most useful on save() output, which typically ends with a newline.
+
+echo "--- basic ---"
+echo "<@{"hello\n".chomp()}>"             // <hello>
+echo "<@{"hello\r\n".chomp()}>"           // <hello>
+echo "<@{"hello".chomp()}>"               // <hello>  (no-op)
+// Only ONE trailing newline is stripped — the remaining \n survives:
+@twolf = "hello\n\n".chomp()
+echo "two-newline input, chomped len: @{@twolf.len()} (should be 6 = 'hello' + one \\n)"
+
+echo "--- with save() ---"
+@os = save(echo dush-is-cool).chomp()
+echo "os tag = <@os>"
+
+echo "--- inline in interpolation ---"
+echo "marker: [@{save(echo inline-value).chomp()}]"

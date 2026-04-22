@@ -1,0 +1,23 @@
+// Script arguments — @ARGS and @SCRIPT.
+// Run:   dush tests/script_args.dush one two "three four"
+
+echo "script: @SCRIPT"
+echo "count:  @{@ARGS.len()}"
+
+if (@ARGS.len() == 0) {
+    echo "(no args passed)"
+} else {
+    echo "first: @{@ARGS[0]}"
+    echo "last:  @{@ARGS[-1]}"
+    echo "joined: @{@ARGS.join(" | ")}"
+}
+
+// Loop over args
+echo "--- each arg on its own line ---"
+loop (@a : @ARGS) {
+    echo "  arg: @a"
+}
+
+// Args behave like any other string array
+@upper = @ARGS.map(proc(@s) { return @s.upper() })
+echo "upper: @{@upper.join(", ")}"

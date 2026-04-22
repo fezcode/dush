@@ -1,0 +1,30 @@
+// String escape sequences — double-quoted strings only.
+// Single-quoted strings stay raw.
+
+// --- Basic escapes ---
+echo "tab:\there"
+echo "newline:\nsecond line"
+echo "cr:\rafter-cr"
+echo "quote: \" backslash: \\ apostrophe: \'"
+echo "nul byte:<\0>"
+
+// --- Hex and unicode ---
+echo "\x41\x42\x43"           // "ABC"
+echo "\u{1F600}"               // 😀
+echo "\u{41} \u{42}"           // "A B"
+
+// --- Suppressing @ interpolation with \@ ---
+@name = "world"
+echo "hello @name"             // interpolates → "hello world"
+echo "hello \@name"            // literal     → "hello @name"
+
+// --- Raw strings keep backslashes ---
+echo 'tab:\there'              // literal backslash-t-h-e-r-e
+echo 'no @interp here'         // literal @interp
+
+// --- Unknown escapes are kept as-is (forgiving) ---
+echo "\q literal"              // prints "\q literal"
+
+// --- Escapes inside interpolated expressions ---
+@line = "line1\nline2"
+echo @line                     // two lines

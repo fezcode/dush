@@ -360,4 +360,25 @@ classify(42)
 classify(999)
 
 echo ""
+echo "--- String escapes ---"
+echo "with newline: a\nb"
+echo "with tab:     a\tb"
+echo "unicode:      \u{2728}"
+echo "literal @:    \@mention"
+
+echo ""
+echo "--- Script arguments ---"
+echo "script path: @SCRIPT"
+echo "arg count:   @{@ARGS.len()}"
+if (@ARGS.len() > 0) {
+    echo "args:        @{@ARGS.join(", ")}"
+}
+
+echo ""
+echo "--- chomp + inline command substitution ---"
+@greeting = save(echo hello-from-subshell).chomp()
+echo "captured: <@greeting>"
+echo "inline:   <@{save(echo inline-bit).chomp()}>"
+
+echo ""
 echo "Showcase complete!"
