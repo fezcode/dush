@@ -558,8 +558,8 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 	raw := p.curToken.Literal
 	tok := p.curToken
 
-	// Check if the string contains @ for interpolation
-	if !strings.Contains(raw, "@") {
+	// Fast path: no interpolation and no escapes.
+	if !strings.ContainsAny(raw, "@\\") {
 		return &ast.StringLiteral{Token: tok, Value: raw}
 	}
 
@@ -575,21 +575,93 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 	return &ast.InterpolatedStringExpression{Token: tok, Parts: parts}
 }
 
-// parseInterpolationParts scans a string for @name and @{expr} patterns.
+// parseInterpolationParts scans a string for @name and @{expr} patterns and
+// processes backslash escapes (\n, \t, \r, \0, \\, \", \', \@, \xHH, \u{...}).
 func (p *Parser) parseInterpolationParts(raw string, tok token.Token) []ast.Expression {
 	var parts []ast.Expression
+	var lit strings.Builder
+	flushLit := func() {
+		if lit.Len() > 0 {
+			parts = append(parts, &ast.StringLiteral{Token: tok, Value: lit.String()})
+			lit.Reset()
+		}
+	}
 	i := 0
 
 	for i < len(raw) {
+		if raw[i] == '\\' && i+1 < len(raw) {
+			esc := raw[i+1]
+			switch esc {
+			case 'n':
+				lit.WriteByte('\n')
+				i += 2
+				continue
+			case 't':
+				lit.WriteByte('\t')
+				i += 2
+				continue
+			case 'r':
+				lit.WriteByte('\r')
+				i += 2
+				continue
+			case '0':
+				lit.WriteByte(0)
+				i += 2
+				continue
+			case '\\', '"', '\'', '@':
+				lit.WriteByte(esc)
+				i += 2
+				continue
+			case 'x':
+				if i+3 < len(raw) {
+					if b, err := strconv.ParseUint(raw[i+2:i+4], 16, 8); err == nil {
+						lit.WriteByte(byte(b))
+						i += 4
+						continue
+					}
+				}
+				p.errors = append(p.errors, fmt.Sprintf("invalid \\x escape in string literal at position %d", i))
+				lit.WriteByte('\\')
+				lit.WriteByte('x')
+				i += 2
+				continue
+			case 'u':
+				if i+2 < len(raw) && raw[i+2] == '{' {
+					end := i + 3
+					for end < len(raw) && raw[end] != '}' {
+						end++
+					}
+					if end < len(raw) && end > i+3 {
+						if cp, err := strconv.ParseUint(raw[i+3:end], 16, 32); err == nil && cp <= 0x10FFFF {
+							lit.WriteRune(rune(cp))
+							i = end + 1
+							continue
+						}
+					}
+				}
+				p.errors = append(p.errors, fmt.Sprintf("invalid \\u{...} escape in string literal at position %d", i))
+				lit.WriteByte('\\')
+				lit.WriteByte('u')
+				i += 2
+				continue
+			}
+			// Unknown escape — keep the backslash literal (forgiving).
+			lit.WriteByte('\\')
+			lit.WriteByte(esc)
+			i += 2
+			continue
+		}
+
 		if raw[i] == '@' {
 			i++
 			if i >= len(raw) {
 				// Trailing @, treat as literal
-				parts = append(parts, &ast.StringLiteral{Token: tok, Value: "@"})
+				lit.WriteByte('@')
 				break
 			}
 
 			if raw[i] == '{' {
+				flushLit()
 				// @{expr} — find matching }
 				i++ // skip {
 				start := i
@@ -616,6 +688,7 @@ func (p *Parser) parseInterpolationParts(raw string, tok token.Token) []ast.Expr
 					parts = append(parts, expr)
 				}
 			} else if isIdentStart(raw[i]) {
+				flushLit()
 				// @name — read identifier, then check for .method()
 				start := i
 				for i < len(raw) && isIdentContinue(raw[i]) {
@@ -687,19 +760,18 @@ func (p *Parser) parseInterpolationParts(raw string, tok token.Token) []ast.Expr
 				parts = append(parts, expr)
 			} else {
 				// @ followed by non-ident char — treat @ as literal
-				parts = append(parts, &ast.StringLiteral{Token: tok, Value: "@" + string(raw[i])})
+				lit.WriteByte('@')
+				lit.WriteByte(raw[i])
 				i++
 			}
 		} else {
-			// Plain text
-			start := i
-			for i < len(raw) && raw[i] != '@' {
-				i++
-			}
-			parts = append(parts, &ast.StringLiteral{Token: tok, Value: raw[start:i]})
+			// Plain text char — accumulate into the literal buffer
+			lit.WriteByte(raw[i])
+			i++
 		}
 	}
 
+	flushLit()
 	return parts
 }
 

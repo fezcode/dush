@@ -58,12 +58,18 @@ Decimal numbers. Mixed int/float operations produce floats.
 ```
 
 ### String
-Double-quoted strings support `@` interpolation. Single-quoted strings are raw.
+Double-quoted strings support `@` interpolation and backslash escapes (`\n`, `\t`, `\r`, `\0`, `\\`, `\"`, `\'`, `\@`, `\xHH`, `\u{HHHH}`). Single-quoted strings are raw (no interpolation, no escapes).
+
+Inside `@{...}` interpolation blocks, bare `"` is literal — no escaping needed.
 
 ```
 @name = "world"
-@greeting = "hello @name"    # "hello world"
-@raw = 'hello @name'         # "hello @name" (literal)
+@greeting = "hello @name"       # "hello world"
+@raw = 'hello @name'            # "hello @name" (literal)
+@multi = "line1\nline2"         # two lines
+@inline = "sum: @{1 + 2}"       # "sum: 3"
+@items = ["a", "b"]
+@csv = "list: @{@items.join(", ")}"
 @concat = "hello" + " " + "world"
 ```
 
@@ -79,6 +85,7 @@ Comparison: `==`, `!=`, `<`, `>` (lexicographic).
 | `.trim()` | String | Strip leading/trailing whitespace |
 | `.trim_start()` | String | Strip leading whitespace |
 | `.trim_end()` | String | Strip trailing whitespace |
+| `.chomp()` | String | Strip one trailing `\n` or `\r\n` |
 | `.contains(s)` | Boolean | Substring check |
 | `.starts_with(s)` | Boolean | Prefix check |
 | `.ends_with(s)` | Boolean | Suffix check |
@@ -300,6 +307,8 @@ These are populated by the shell and cannot be reassigned:
 - `@OS_NAME` — operating system name
 - `@USER_NAME` — current user
 - `@SHELL_VERSION` — dush version string
+- `@SCRIPT` — path of the running script (empty in interactive mode)
+- `@ARGS` — array of arguments passed to the script
 
 ## 11. Built-in Functions
 

@@ -92,6 +92,25 @@ source script.dush
 . script.dush              // shorthand
 ```
 
+## Scripts & Arguments
+
+Invoke a `.dush` file directly:
+```
+dush build.dush prod --verbose
+```
+
+Arguments after the script filename land in `@ARGS` (array of strings), and
+`@SCRIPT` holds the path of the running script.
+
+```
+// build.dush
+echo "running: @SCRIPT"
+echo "count:   @{@ARGS.len()}"
+loop (@a : @ARGS) {
+    echo "  - @a"
+}
+```
+
 ## Interactive Keys
 
 | Key        | Action                                       |

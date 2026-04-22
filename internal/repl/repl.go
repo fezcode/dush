@@ -659,6 +659,26 @@ func isUnclosed(input string) bool {
 		ch := input[i]
 		switch {
 		case inDouble:
+			if ch == '\\' && i+1 < len(input) {
+				i++ // skip escaped char inside "..."
+				continue
+			}
+			if ch == '@' && i+1 < len(input) && input[i+1] == '{' {
+				// Skip @{...} interpolation block — inner " is literal.
+				i += 2
+				depth := 1
+				for i < len(input) && depth > 0 {
+					switch input[i] {
+					case '{':
+						depth++
+					case '}':
+						depth--
+					}
+					i++
+				}
+				i-- // outer loop will ++
+				continue
+			}
 			if ch == '"' {
 				inDouble = false
 			}

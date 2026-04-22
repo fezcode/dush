@@ -61,7 +61,7 @@ Mixed int/float operations produce floats.
 
 ### String
 
-Double-quoted strings support `@` interpolation. Single-quoted strings are raw.
+Double-quoted strings support `@` interpolation and backslash escapes. Single-quoted strings are raw (no interpolation, no escapes).
 
 ```
 @name = "world"
@@ -70,6 +70,36 @@ Double-quoted strings support `@` interpolation. Single-quoted strings are raw.
 @concat = "hello" + " " + "world"
 @ch = @name[0]             // "w" (index access)
 @last = @name[-1]          // "d" (negative index)
+```
+
+**Escape sequences** (double-quoted only):
+
+| Escape | Result |
+|---|---|
+| `\n` | Newline |
+| `\t` | Tab |
+| `\r` | Carriage return |
+| `\0` | NUL byte |
+| `\\` | Backslash |
+| `\"` | Double quote |
+| `\'` | Single quote |
+| `\@` | Literal `@` (suppresses interpolation) |
+| `\xHH` | Hex byte (2 digits) |
+| `\u{HHHH}` | Unicode codepoint (1–6 hex digits) |
+
+```
+echo "line 1\nline 2"           // two lines
+echo "\x41\x42"                  // "AB"
+echo "\u{1F600}"                 // 😀
+echo "email: \@example.com"      // literal @
+```
+
+**Inline expressions** with `@{...}` — inner `"` does not need escaping:
+
+```
+@items = ["a", "b", "c"]
+echo "joined: @{@items.join(", ")}"          // joined: a, b, c
+echo "branch: @{save(git rev-parse --abbrev-ref HEAD).chomp()}"
 ```
 
 **Methods:**
@@ -89,6 +119,7 @@ Double-quoted strings support `@` interpolation. Single-quoted strings are raw.
 | `.replace_all(old, new)` | String | Replace all occurrences |
 | `.split(sep)` | Array | Split into array |
 | `.slice(start, end)` | String | Substring by index |
+| `.chomp()` | String | Strip one trailing `\n` or `\r\n` (handy for `save()` output) |
 | `.or(default)` | String | Return default if empty |
 | `.to_string()` | String | Identity |
 
@@ -303,6 +334,8 @@ let @count = make_counter()
 | `@OS_NAME` | Operating system name |
 | `@USER_NAME` | Current user |
 | `@SHELL_VERSION` | Dush version string |
+| `@SCRIPT` | Path of the currently-running script (empty in interactive mode) |
+| `@ARGS` | Array of arguments passed to the script after its filename |
 
 ## Built-in Functions
 
@@ -326,9 +359,28 @@ let @count = make_counter()
 
 ## Roadmap
 
-- Error handling (try/catch)
+Proposed syntax is dush-native — no `$1` / `$(...)` / `set -e` / `!!` borrowings.
+
+**Error handling:**
+```
+try {
+    risky()
+} catch (@err) {
+    echo "failed: @err"
+}
+throw "bad state"
+```
+
+**Strict / trace / pipefail** via scoped `with`:
+```
+with (strict = true, trace = true) {
+    cmd1
+    cmd2   // aborts on any non-zero
+}
+```
+
+Other items still on the list:
 - Here-docs (`<<EOF ... EOF`)
 - Regex match with captures
 - JSON parse/stringify builtins
 - HTTP fetch builtin
-- Break/continue in loops

@@ -59,8 +59,21 @@ func NewEnvironment() *Environment {
 	env.setShellVar("USER_NAME", &object.String{Value: username})
 
 	env.setShellVar("SHELL_VERSION", &object.String{Value: ShellVersion})
+	env.setShellVar("ARGS", &object.Array{Elements: []object.Object{}})
+	env.setShellVar("SCRIPT", &object.String{Value: ""})
 
 	return env
+}
+
+// SetScriptArgs populates @SCRIPT (path) and @ARGS (user arguments) for a
+// script invocation. Safe to call multiple times; later calls overwrite.
+func (e *Environment) SetScriptArgs(scriptPath string, args []string) {
+	elems := make([]object.Object, 0, len(args))
+	for _, a := range args {
+		elems = append(elems, &object.String{Value: a})
+	}
+	e.ShellSet("SCRIPT", &object.String{Value: scriptPath})
+	e.ShellSet("ARGS", &object.Array{Elements: elems})
 }
 
 func NewEnclosedEnvironment(outer *Environment) *Environment {

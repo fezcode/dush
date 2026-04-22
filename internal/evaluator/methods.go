@@ -61,6 +61,16 @@ func evalStringMethod(s *object.String, method string, args []object.Object) obj
 			}
 		}
 		return &object.String{Value: strings.TrimRight(s.Value, " \t\n\r")}
+	case "chomp":
+		// Strip a single trailing \n or \r\n — handy for save() output.
+		v := s.Value
+		switch {
+		case strings.HasSuffix(v, "\r\n"):
+			v = v[:len(v)-2]
+		case strings.HasSuffix(v, "\n"):
+			v = v[:len(v)-1]
+		}
+		return &object.String{Value: v}
 	case "contains":
 		if len(args) != 1 {
 			return newError("contains() takes 1 argument, got %d", len(args))

@@ -265,12 +265,42 @@ func (l *Lexer) readNumber() string {
 	return l.input[position:l.position]
 }
 
-// readString reads a double-quoted string (interpolation handled by parser).
+// readString reads a double-quoted string (interpolation + escape handled by parser).
+// We honor two kinds of "don't terminate here" rules:
+//   - Backslash escapes (\", \\, \n, ...) so \" stays part of the literal.
+//   - @{ ... } interpolation blocks: once we see @{ we count brace depth and
+//     bare " inside is treated as literal, so you can write
+//     "args: @{@ARGS.join(" | ")}" without escaping the inner quotes.
 func (l *Lexer) readString() string {
 	position := l.position + 1
+	interpDepth := 0
 	for {
 		l.readChar()
-		if l.ch == '"' || l.ch == 0 {
+		if l.ch == 0 {
+			break
+		}
+		if l.ch == '\\' {
+			l.readChar()
+			if l.ch == 0 {
+				break
+			}
+			continue
+		}
+		if interpDepth > 0 {
+			switch l.ch {
+			case '{':
+				interpDepth++
+			case '}':
+				interpDepth--
+			}
+			continue
+		}
+		if l.ch == '@' && l.peekChar() == '{' {
+			l.readChar() // consume {
+			interpDepth = 1
+			continue
+		}
+		if l.ch == '"' {
 			break
 		}
 	}

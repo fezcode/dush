@@ -15,11 +15,18 @@ var Version = "dev"
 func main() {
 	// Parse flags and collect positional args
 	var scriptFile string
+	var scriptArgs []string
 	var envPath, isPath, historyPath string
 
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+
+		// Once we have a script file, everything after is forwarded as @ARGS.
+		if scriptFile != "" {
+			scriptArgs = append(scriptArgs, arg)
+			continue
+		}
 
 		switch {
 		case arg == "-v" || arg == "--version":
@@ -44,9 +51,7 @@ func main() {
 		case strings.HasPrefix(arg, "--history="):
 			historyPath = strings.TrimPrefix(arg, "--history=")
 		case !strings.HasPrefix(arg, "-"):
-			if scriptFile == "" {
-				scriptFile = arg
-			}
+			scriptFile = arg
 		default:
 			fmt.Fprintf(os.Stderr, "unknown flag: %s\n", arg)
 			os.Exit(1)
@@ -77,6 +82,7 @@ func main() {
 		env := evaluator.NewEnvironment()
 		env.Stdout = os.Stdout
 		env.Stderr = os.Stderr
+		env.SetScriptArgs(scriptFile, scriptArgs)
 
 		// Source env file (always loaded)
 		if ep := config.ShellPaths.Env; ep != "" {
