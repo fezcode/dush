@@ -444,30 +444,92 @@ func isCommandTerminator(t token.TokenType) bool {
 }
 
 // parseCommandArg parses a single command argument.
-// This is the rewritten command arg loop that fixes bugs 1 and 2.
+// Absorbs adjacent (no-space) pieces into one arg so things like
+// `cd "Primer (2004)"/` or `foo"bar"baz` form a single argument.
 func (p *Parser) parseCommandArg() ast.Expression {
+	first := p.parseCommandArgPiece()
+	if first == nil {
+		return nil
+	}
+
+	if isCommandTerminator(p.peekToken.Type) || p.peekToken.PrecededBySpace || p.peekToken.Type == token.EOF {
+		return first
+	}
+
+	parts := []ast.Expression{first}
+	for !isCommandTerminator(p.peekToken.Type) && !p.peekToken.PrecededBySpace && p.peekToken.Type != token.EOF {
+		p.nextToken()
+		piece := p.parseCommandArgPiece()
+		if piece != nil {
+			parts = append(parts, piece)
+		}
+	}
+
+	return combineArgParts(parts)
+}
+
+// parseCommandArgPiece parses one piece of a command argument (string, var, word, etc.).
+func (p *Parser) parseCommandArgPiece() ast.Expression {
 	switch p.curToken.Type {
 	case token.AT:
-		// Variable reference: @name, @name.method()
 		return p.parseVarExpressionWithMethods()
 
 	case token.STRING:
-		// Double-quoted string, may have interpolation
 		return p.parseStringLiteral()
 
 	case token.RAW_STRING:
-		// Single-quoted string, no interpolation
 		return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 
 	case token.LPAREN:
-		// Grouped expression: (expr) — full expression parsing inside parens
 		return p.parseGroupedExpression()
 
 	default:
-		// Build a "word" by concatenating adjacent non-space tokens.
-		// Handles: file.txt, -la, --verbose, C:\Users\foo, *.go, etc.
 		return p.parseCommandWord()
 	}
+}
+
+// combineArgParts merges multiple adjacent arg pieces into a single expression.
+// Adjacent StringLiterals are concatenated; mixed pieces become an
+// InterpolatedStringExpression so evaluation stringifies and joins them.
+func combineArgParts(parts []ast.Expression) ast.Expression {
+	if len(parts) == 1 {
+		return parts[0]
+	}
+
+	var flat []ast.Expression
+	for _, part := range parts {
+		if ise, ok := part.(*ast.InterpolatedStringExpression); ok {
+			flat = append(flat, ise.Parts...)
+		} else {
+			flat = append(flat, part)
+		}
+	}
+
+	var merged []ast.Expression
+	for _, part := range flat {
+		if sl, ok := part.(*ast.StringLiteral); ok && len(merged) > 0 {
+			if prev, ok := merged[len(merged)-1].(*ast.StringLiteral); ok {
+				prev.Value += sl.Value
+				continue
+			}
+		}
+		merged = append(merged, part)
+	}
+
+	if len(merged) == 1 {
+		return merged[0]
+	}
+
+	var tok token.Token
+	switch f := parts[0].(type) {
+	case *ast.StringLiteral:
+		tok = f.Token
+	case *ast.InterpolatedStringExpression:
+		tok = f.Token
+	default:
+		tok = token.Token{Type: token.STRING}
+	}
+	return &ast.InterpolatedStringExpression{Token: tok, Parts: merged}
 }
 
 // parseVarExpressionWithMethods parses @name and then any .method() chains,

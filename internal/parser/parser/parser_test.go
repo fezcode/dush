@@ -160,6 +160,9 @@ func TestCommandExpressions(t *testing.T) {
 		{"mkdir -p dir/subdir", "mkdir", 2},
 		{"git commit -m message", "git", 3},
 		{"echo 'raw string arg'", "echo", 1},
+		{`cd "Primer (2004) [WEBRip]"/`, "cd", 1},
+		{`cd "dir with spaces"/sub`, "cd", 1},
+		{`echo pre"mid"post`, "echo", 1},
 	}
 
 	for _, tt := range tests {
@@ -193,6 +196,190 @@ func TestCommandExpressions(t *testing.T) {
 			t.Errorf("input %q: expected %d args, got %d", tt.input, tt.numArgs, len(cmd.Args))
 		}
 	}
+}
+
+// TestAdjacentArgPieces verifies that string/word/raw-string/var pieces with
+// no space between them are merged into a single command argument. This is the
+// "cd: too many arguments" bug — tab-completion produces `cd "dir"/` and the
+// trailing slash was landing in a separate arg.
+func TestAdjacentArgPieces(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		cmdName string
+		// expectedArgs: the string value each arg stringifies to (StringLiteral.Value
+		// or InterpolatedStringExpression.String() minus wrapping quotes).
+		expectedArgs []string
+	}{
+		{
+			name:         "quoted dir with trailing slash (reported bug)",
+			input:        `cd "Primer (2004) [WEBRip] [1080p] [YTS.AM]"/`,
+			cmdName:      "cd",
+			expectedArgs: []string{`Primer (2004) [WEBRip] [1080p] [YTS.AM]/`},
+		},
+		{
+			name:         "quoted dir followed by subpath",
+			input:        `cd "dir with spaces"/sub/path`,
+			cmdName:      "cd",
+			expectedArgs: []string{`dir with spaces/sub/path`},
+		},
+		{
+			name:         "word then string then word",
+			input:        `echo pre"mid"post`,
+			cmdName:      "echo",
+			expectedArgs: []string{`premidpost`},
+		},
+		{
+			name:         "word followed by string",
+			input:        `echo foo"bar"`,
+			cmdName:      "echo",
+			expectedArgs: []string{`foobar`},
+		},
+		{
+			name:         "two adjacent strings",
+			input:        `echo "a""b"`,
+			cmdName:      "echo",
+			expectedArgs: []string{`ab`},
+		},
+		{
+			name:         "raw string with trailing slash",
+			input:        `cd 'some dir'/`,
+			cmdName:      "cd",
+			expectedArgs: []string{`some dir/`},
+		},
+		{
+			name:         "raw string then word",
+			input:        `cd 'some dir'/subdir`,
+			cmdName:      "cd",
+			expectedArgs: []string{`some dir/subdir`},
+		},
+		{
+			name:         "double and raw string adjacent",
+			input:        `echo "x"'y'z`,
+			cmdName:      "echo",
+			expectedArgs: []string{`xyz`},
+		},
+		{
+			name:         "space separates into distinct args",
+			input:        `cd "dir one" "dir two"`,
+			cmdName:      "cd",
+			expectedArgs: []string{`dir one`, `dir two`},
+		},
+		{
+			name:         "mixed: adjacent joins, spaces split",
+			input:        `cp "src dir"/file.txt "dst dir"/out`,
+			cmdName:      "cp",
+			expectedArgs: []string{`src dir/file.txt`, `dst dir/out`},
+		},
+		{
+			name:         "plain word args untouched",
+			input:        `cd folder/subfolder`,
+			cmdName:      "cd",
+			expectedArgs: []string{`folder/subfolder`},
+		},
+		{
+			name:         "trailing slash on bare word (regression guard)",
+			input:        `cd folder/`,
+			cmdName:      "cd",
+			expectedArgs: []string{`folder/`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := lexer.New(tt.input)
+			p := New(l)
+			program := p.ParseProgram()
+			checkParserErrors(t, p)
+
+			if len(program.Statements) != 1 {
+				t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+			}
+
+			exprStmt, ok := program.Statements[0].(*ast.ExpressionStatement)
+			if !ok {
+				t.Fatalf("expected ExpressionStatement, got %T", program.Statements[0])
+			}
+
+			cmd, ok := exprStmt.Expression.(*ast.CommandExpression)
+			if !ok {
+				t.Fatalf("expected CommandExpression, got %T", exprStmt.Expression)
+			}
+
+			if cmd.Name != tt.cmdName {
+				t.Errorf("command name: expected %q, got %q", tt.cmdName, cmd.Name)
+			}
+
+			if len(cmd.Args) != len(tt.expectedArgs) {
+				t.Fatalf("expected %d args, got %d (%v)", len(tt.expectedArgs), len(cmd.Args), argStrings(cmd.Args))
+			}
+
+			for i, want := range tt.expectedArgs {
+				got := argPlainString(cmd.Args[i])
+				if got != want {
+					t.Errorf("arg %d: expected %q, got %q (type %T)", i, want, got, cmd.Args[i])
+				}
+			}
+		})
+	}
+}
+
+// TestAdjacentArgWithVariable ensures variable interpolation still works when
+// joined with adjacent literal pieces (e.g. @base"/file.txt").
+func TestAdjacentArgWithVariable(t *testing.T) {
+	input := `echo @dir/file.txt`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	cmd, ok := program.Statements[0].(*ast.ExpressionStatement).Expression.(*ast.CommandExpression)
+	if !ok {
+		t.Fatalf("expected CommandExpression")
+	}
+	if len(cmd.Args) != 1 {
+		t.Fatalf("expected 1 arg, got %d", len(cmd.Args))
+	}
+	ise, ok := cmd.Args[0].(*ast.InterpolatedStringExpression)
+	if !ok {
+		t.Fatalf("expected InterpolatedStringExpression, got %T", cmd.Args[0])
+	}
+	if len(ise.Parts) < 2 {
+		t.Fatalf("expected at least 2 parts (var + literal), got %d", len(ise.Parts))
+	}
+	if _, ok := ise.Parts[0].(*ast.VarExpression); !ok {
+		t.Errorf("expected first part to be VarExpression, got %T", ise.Parts[0])
+	}
+}
+
+// argPlainString extracts the flattened string value from a command arg,
+// unwrapping StringLiteral and rendering InterpolatedStringExpression parts
+// as concatenated literal text (for literal-only test cases).
+func argPlainString(e ast.Expression) string {
+	switch v := e.(type) {
+	case *ast.StringLiteral:
+		return v.Value
+	case *ast.InterpolatedStringExpression:
+		var out string
+		for _, p := range v.Parts {
+			if sl, ok := p.(*ast.StringLiteral); ok {
+				out += sl.Value
+			} else {
+				out += "<" + p.String() + ">"
+			}
+		}
+		return out
+	default:
+		return e.String()
+	}
+}
+
+func argStrings(args []ast.Expression) []string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		out[i] = argPlainString(a)
+	}
+	return out
 }
 
 func TestDottedCommandNames(t *testing.T) {
