@@ -18,7 +18,7 @@ Features to make dush a better shell. Not chasing bash compatibility — buildin
 | 1 | Array literals `[1, 2, 3]` | `[x]` | Full support with push/pop/slice/map/filter/reverse/first/last methods. |
 | 2 | Map/dict type `{"key": "value"}` | `[x]` | Full support with keys/values/has/delete/merge methods. Insertion-order preserved. |
 | 3 | Index expressions `@arr[0]`, `@map["key"]` | `[x]` | Works on arrays, maps, and strings. Negative indices wrap. Assignment supported. |
-| 4 | Range literals `1..10`, `1..=10` | `[ ]` | `loop (@i : 5)` works for 0..4, but no standalone range expression. |
+| 4 | Range literals `1..10`, `1..=10` | `[x]` | `1..5` exclusive, `1..=5` inclusive. Returns array, works in loops. See `tests/ranges.dush`. |
 | 5 | Null literal | `[-]` | Null exists internally but no `null` keyword. Rarely needed — dush doesn't have nullable vars. |
 
 ## Shell Features
@@ -28,7 +28,7 @@ Features to make dush a better shell. Not chasing bash compatibility — buildin
 | 6 | Globbing in commands `ls *.go` | `[x]` | Already works — `evalCommandExpression` calls `filepath.Glob` on args containing `*` or `?`. |
 | 7 | Tilde expansion `~/file` | `[x]` | Already works — `evalCommandExpression` expands `~` to home dir. |
 | 8 | Stderr redirect `2>`, `2>>`, `&>` | `[x]` | `2>file`, `2>>file`, `&>file` (both stdout+stderr). |
-| 9 | Here-docs `<<EOF ... EOF` | `[ ]` | Multi-line string input to commands. Requires deeper lexer changes. |
+| 9 | Here-docs `<<EOF ... EOF` | `[x]` | Multi-line string input to commands. See `tests/heredocs.dush`. |
 | 10 | Here-strings `<<<` | `[x]` | Feed a string directly as stdin: `sort <<< "hello"`. |
 | 11 | Subshells `(cmd1; cmd2)` | `[ ]` | Run commands in an isolated environment. Useful for temp cd, var changes. |
 | 12 | Process substitution `<(cmd)` | `[ ]` | Treat command output as a file path. Niche but powerful for diff, paste, etc. |
@@ -48,17 +48,17 @@ Features to make dush a better shell. Not chasing bash compatibility — buildin
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
 | 18 | `else if` chains | `[-]` | Works now: `if (...) { } else { if (...) { } }` — but no `else if` shorthand. Could be nice. |
-| 19 | `break` / `continue` in loops | `[ ]` | Not implemented. Loops must run to completion or return. |
+| 19 | `break` / `continue` in loops | `[x]` | Both keywords work in `loop` blocks. |
 | 20 | Loop `else` clause | `[ ]` | `loop (...) { } else { }` — runs else if loop body never executed. Python-style. |
 
 ## String Features
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 21 | Regex match with captures | `[ ]` | `@s.match("pattern")` returning array of captures. Bash `=~` is terrible. |
+| 21 | Regex match with captures | `[x]` | `.match()` returns captures, `.matches()` returns bool, `.match_all()` returns all matches, `.replace_regex()` replaces by pattern. RE2 syntax. See `tests/regex.dush`. |
 | 22 | Multi-line strings | `[-]` | Double-quoted strings already span lines. Raw strings too. Works. |
 | 23 | String repeat | `[ ]` | `@s.repeat(3)` or `"ab" * 3`. Small utility. |
-| 24 | String indexing | `[ ]` | `@s[0]` — needs index expressions (#3) first. |
+| 24 | String indexing | `[x]` | `@s[0]` works via index expressions (#3). Negative indices wrap. |
 
 ## Built-in Utilities
 

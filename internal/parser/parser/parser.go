@@ -1271,9 +1271,14 @@ func (p *Parser) parseRangeExpression(left ast.Expression) ast.Expression {
 func (p *Parser) parseMethodCallExpression(left ast.Expression) ast.Expression {
 	dotToken := p.curToken
 
-	if !p.expectPeek(token.IDENT) {
+	// Accept IDENT or any keyword as a method name (e.g. `.match(...)` where
+	// `match` is also a statement keyword). The lexer will have classified it,
+	// but at the method-call position any identifier-shaped token is valid.
+	if !p.peekTokenIsIdentLike() {
+		p.peekError(token.IDENT)
 		return left
 	}
+	p.nextToken()
 	methodName := p.curToken.Literal
 
 	var args []ast.Expression
@@ -1419,6 +1424,24 @@ func (p *Parser) curTokenIs(t token.TokenType) bool {
 
 func (p *Parser) peekTokenIs(t token.TokenType) bool {
 	return p.peekToken.Type == t
+}
+
+// peekTokenIsIdentLike reports whether the peek token looks like an identifier,
+// including keywords (so `.match(...)` parses even though `match` is a keyword).
+func (p *Parser) peekTokenIsIdentLike() bool {
+	if p.peekToken.Type == token.IDENT {
+		return true
+	}
+	lit := p.peekToken.Literal
+	if lit == "" {
+		return false
+	}
+	for _, r := range lit {
+		if !(r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *Parser) expectPeek(t token.TokenType) bool {

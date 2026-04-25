@@ -1264,6 +1264,102 @@ func TestStringChomp(t *testing.T) {
 	}
 }
 
+func TestStringRegexMethods(t *testing.T) {
+	// matches() — boolean
+	matchesTests := []struct {
+		input    string
+		expected bool
+	}{
+		{`"hello".matches("h.llo")`, true},
+		{`"hello".matches("^x")`, false},
+		{`"foo123".matches("\\d+")`, true},
+		{`"abc".matches("\\d+")`, false},
+	}
+	for _, tt := range matchesTests {
+		evaluated := testEval(tt.input)
+		b, ok := evaluated.(*object.Boolean)
+		if !ok {
+			t.Errorf("input %q: expected Boolean, got %T (%+v)", tt.input, evaluated, evaluated)
+			continue
+		}
+		if b.Value != tt.expected {
+			t.Errorf("input %q: expected %v, got %v", tt.input, tt.expected, b.Value)
+		}
+	}
+
+	// match() — array of captures
+	matchTests := []struct {
+		input    string
+		expected []string
+	}{
+		{`"v1.2.3".match("v(\\d+)\\.(\\d+)\\.(\\d+)")`, []string{"v1.2.3", "1", "2", "3"}},
+		{`"nope".match("(\\d+)")`, []string{}},
+		{`"abc".match("b")`, []string{"b"}},
+	}
+	for _, tt := range matchTests {
+		evaluated := testEval(tt.input)
+		arr, ok := evaluated.(*object.Array)
+		if !ok {
+			t.Errorf("input %q: expected Array, got %T (%+v)", tt.input, evaluated, evaluated)
+			continue
+		}
+		if len(arr.Elements) != len(tt.expected) {
+			t.Errorf("input %q: expected %d captures, got %d", tt.input, len(tt.expected), len(arr.Elements))
+			continue
+		}
+		for i, want := range tt.expected {
+			got, ok := arr.Elements[i].(*object.String)
+			if !ok || got.Value != want {
+				t.Errorf("input %q: capture %d: expected %q, got %+v", tt.input, i, want, arr.Elements[i])
+			}
+		}
+	}
+
+	// match_all() — all matches
+	evaluated := testEval(`"a1 b22 c333".match_all("\\d+")`)
+	arr, ok := evaluated.(*object.Array)
+	if !ok {
+		t.Fatalf("match_all: expected Array, got %T", evaluated)
+	}
+	want := []string{"1", "22", "333"}
+	if len(arr.Elements) != len(want) {
+		t.Fatalf("match_all: expected %d, got %d", len(want), len(arr.Elements))
+	}
+	for i, w := range want {
+		got := arr.Elements[i].(*object.String).Value
+		if got != w {
+			t.Errorf("match_all[%d]: expected %q, got %q", i, w, got)
+		}
+	}
+
+	// replace_regex() — pattern replacement
+	replTests := []struct {
+		input    string
+		expected string
+	}{
+		{`"a  b   c".replace_regex("\\s+", "-")`, "a-b-c"},
+		{`"x1y2z3".replace_regex("\\d", "#")`, "x#y#z#"},
+		{`"hello".replace_regex("xyz", "-")`, "hello"},
+	}
+	for _, tt := range replTests {
+		evaluated := testEval(tt.input)
+		s, ok := evaluated.(*object.String)
+		if !ok {
+			t.Errorf("input %q: expected String, got %T", tt.input, evaluated)
+			continue
+		}
+		if s.Value != tt.expected {
+			t.Errorf("input %q: expected %q, got %q", tt.input, tt.expected, s.Value)
+		}
+	}
+
+	// invalid pattern → error
+	bad := testEval(`"x".match("(unclosed")`)
+	if _, ok := bad.(*object.Error); !ok {
+		t.Errorf("expected Error for invalid regex, got %T (%+v)", bad, bad)
+	}
+}
+
 func TestQuoteSafeInterpolation(t *testing.T) {
 	tests := []struct {
 		input    string

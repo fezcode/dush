@@ -90,7 +90,11 @@ Comparison: `==`, `!=`, `<`, `>` (lexicographic).
 | `.starts_with(s)` | Boolean | Prefix check |
 | `.ends_with(s)` | Boolean | Suffix check |
 | `.replace(old, new)` | String | Replace first occurrence |
-| `.replace_all(old, new)` | String | Replace all occurrences |
+| `.replace_all(old, new)` | String | Replace all occurrences (literal) |
+| `.replace_regex(pat, new)` | String | Replace all regex matches (RE2) |
+| `.match(pat)` | Array | Captures: `[whole, cap1, ...]`, or `[]` if no match |
+| `.matches(pat)` | Boolean | Regex match test |
+| `.match_all(pat)` | Array | All non-overlapping matches |
 | `.split(sep)` | Array | Split into array |
 | `.slice(start, end)` | String | Substring by index |
 | `.or(default)` | String | Return default if empty |
@@ -492,7 +496,5 @@ throw "bad state"
 ```
 
 Other items still on the list:
-- Here-docs (`<<EOF ... EOF`)
-- Regex match with captures
 - JSON parse/stringify builtins
 - HTTP fetch builtin

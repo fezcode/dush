@@ -1,0 +1,30 @@
+// Regex methods: .match(), .matches(), .match_all(), .replace_regex()
+
+echo "--- matches() ---"
+echo (('hello@world.com'.matches(".+@.+\\..+")))
+echo (('not-an-email'.matches(".+@.+\\..+")))
+
+echo "--- match() with captures ---"
+@parts = "v1.2.3".match("v(\\d+)\\.(\\d+)\\.(\\d+)")
+echo "whole:" (@parts[0])
+echo "major:" (@parts[1])
+echo "minor:" (@parts[2])
+echo "patch:" (@parts[3])
+
+echo "--- match() no match returns empty ---"
+@none = "hello".match("(\\d+)")
+echo "len:" @none.len()
+
+echo "--- match_all() ---"
+@nums = "a1 b22 c333".match_all("\\d+")
+echo "found:" @nums.len()
+echo "joined:" (@nums.join(","))
+
+echo "--- replace_regex() ---"
+echo (("a  b   c\td".replace_regex("\\s+", "-")))
+echo (("file name (1).txt".replace_regex("[^a-zA-Z0-9.]", "_")))
+
+echo "--- filter with regex ---"
+@files = ["main.go", "README.md", "test.go", "config.yaml"]
+@go_files = @files.filter(proc(@f) { @f.matches("\\.go$") })
+echo "go files:" (@go_files.join(","))

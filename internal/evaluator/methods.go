@@ -5,6 +5,7 @@ import (
 	"dush/internal/parser/ast"
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 )
 
@@ -171,6 +172,69 @@ func evalStringMethod(s *object.String, method string, args []object.Object) obj
 			e64 = int64(len(s.Value))
 		}
 		return &object.String{Value: s.Value[s64:e64]}
+	case "match":
+		if len(args) != 1 {
+			return newError("match() takes 1 argument, got %d", len(args))
+		}
+		pat, ok := args[0].(*object.String)
+		if !ok {
+			return newError("match() argument must be a string")
+		}
+		re, err := regexp.Compile(pat.Value)
+		if err != nil {
+			return newError("match(): invalid regex: %s", err.Error())
+		}
+		m := re.FindStringSubmatch(s.Value)
+		elements := make([]object.Object, len(m))
+		for i, g := range m {
+			elements[i] = &object.String{Value: g}
+		}
+		return &object.Array{Elements: elements}
+	case "matches":
+		if len(args) != 1 {
+			return newError("matches() takes 1 argument, got %d", len(args))
+		}
+		pat, ok := args[0].(*object.String)
+		if !ok {
+			return newError("matches() argument must be a string")
+		}
+		re, err := regexp.Compile(pat.Value)
+		if err != nil {
+			return newError("matches(): invalid regex: %s", err.Error())
+		}
+		return nativeBoolToBooleanObject(re.MatchString(s.Value))
+	case "match_all":
+		if len(args) != 1 {
+			return newError("match_all() takes 1 argument, got %d", len(args))
+		}
+		pat, ok := args[0].(*object.String)
+		if !ok {
+			return newError("match_all() argument must be a string")
+		}
+		re, err := regexp.Compile(pat.Value)
+		if err != nil {
+			return newError("match_all(): invalid regex: %s", err.Error())
+		}
+		all := re.FindAllString(s.Value, -1)
+		elements := make([]object.Object, len(all))
+		for i, m := range all {
+			elements[i] = &object.String{Value: m}
+		}
+		return &object.Array{Elements: elements}
+	case "replace_regex":
+		if len(args) != 2 {
+			return newError("replace_regex() takes 2 arguments, got %d", len(args))
+		}
+		pat, ok1 := args[0].(*object.String)
+		repl, ok2 := args[1].(*object.String)
+		if !ok1 || !ok2 {
+			return newError("replace_regex() arguments must be strings")
+		}
+		re, err := regexp.Compile(pat.Value)
+		if err != nil {
+			return newError("replace_regex(): invalid regex: %s", err.Error())
+		}
+		return &object.String{Value: re.ReplaceAllString(s.Value, repl.Value)}
 	case "or":
 		if len(args) != 1 {
 			return newError("or() takes 1 argument, got %d", len(args))

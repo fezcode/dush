@@ -116,7 +116,11 @@ echo "branch: @{save(git rev-parse --abbrev-ref HEAD).chomp()}"
 | `.starts_with(s)` | Boolean | Prefix check |
 | `.ends_with(s)` | Boolean | Suffix check |
 | `.replace(old, new)` | String | Replace first occurrence |
-| `.replace_all(old, new)` | String | Replace all occurrences |
+| `.replace_all(old, new)` | String | Replace all occurrences (literal) |
+| `.replace_regex(pat, new)` | String | Replace all matches of regex `pat` |
+| `.match(pat)` | Array | Regex match: `[whole, cap1, cap2, ...]` or `[]` if no match |
+| `.matches(pat)` | Boolean | Regex match test (true/false) |
+| `.match_all(pat)` | Array | All non-overlapping matches as strings |
 | `.split(sep)` | Array | Split into array |
 | `.slice(start, end)` | String | Substring by index |
 | `.chomp()` | String | Strip one trailing `\n` or `\r\n` (handy for `save()` output) |
@@ -393,7 +397,5 @@ throw "bad state"
 ```
 
 Other items still on the list:
-- Here-docs (`<<EOF ... EOF`)
-- Regex match with captures
 - JSON parse/stringify builtins
 - HTTP fetch builtin
