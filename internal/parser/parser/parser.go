@@ -472,6 +472,9 @@ func (p *Parser) parseCommandArg() ast.Expression {
 func (p *Parser) parseCommandArgPiece() ast.Expression {
 	switch p.curToken.Type {
 	case token.AT:
+		if !p.peekTokenIs(token.IDENT) || p.peekToken.PrecededBySpace {
+			return p.parseCommandWord()
+		}
 		return p.parseVarExpressionWithMethods()
 
 	case token.STRING:

@@ -163,6 +163,8 @@ func TestCommandExpressions(t *testing.T) {
 		{`cd "Primer (2004) [WEBRip]"/`, "cd", 1},
 		{`cd "dir with spaces"/sub`, "cd", 1},
 		{`echo pre"mid"post`, "echo", 1},
+		{"ssh user@1.2.3.4", "ssh", 1},
+		{"ssh user@123.123.123.123", "ssh", 1},
 	}
 
 	for _, tt := range tests {
@@ -282,6 +284,42 @@ func TestAdjacentArgPieces(t *testing.T) {
 			input:        `cd folder/`,
 			cmdName:      "cd",
 			expectedArgs: []string{`folder/`},
+		},
+		{
+			name:         "ssh user@ipv4",
+			input:        `ssh user@1.2.3.4`,
+			cmdName:      "ssh",
+			expectedArgs: []string{`user@1.2.3.4`},
+		},
+		{
+			name:         "ssh user@ipv4 (three-digit octets, FLOAT-tokenized)",
+			input:        `ssh user@123.123.123.123`,
+			cmdName:      "ssh",
+			expectedArgs: []string{`user@123.123.123.123`},
+		},
+		{
+			name:         "@ glued to digit (retina image naming)",
+			input:        `echo logo@2x.png`,
+			cmdName:      "echo",
+			expectedArgs: []string{`logo@2x.png`},
+		},
+		{
+			name:         "trailing @ (no token after)",
+			input:        `echo trailing@`,
+			cmdName:      "echo",
+			expectedArgs: []string{`trailing@`},
+		},
+		{
+			name:         "@ followed by space treated as literal",
+			input:        `echo a@ b`,
+			cmdName:      "echo",
+			expectedArgs: []string{`a@`, `b`},
+		},
+		{
+			name:         "scp-style user@host:path",
+			input:        `scp file user@1.2.3.4:/tmp/`,
+			cmdName:      "scp",
+			expectedArgs: []string{`file`, `user@1.2.3.4:/tmp/`},
 		},
 	}
 
